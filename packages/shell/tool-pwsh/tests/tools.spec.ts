@@ -673,6 +673,40 @@ describe('sandbox escalation through ctx.approval', () => {
     expect(schema.parameters.properties).not.toHaveProperty('sandbox_permissions')
   })
 
+  it.each([undefined, '', ' \t\n'])('runs without escalation for justification %j', async (justification) => {
+    const { ctx, bash } = await setupSandboxed(true)
+    try {
+      const prompted = vi.fn()
+      ctx.on('approval/request', () => { prompted(); return Promise.resolve<ApprovalOutcome>('allowed-once') })
+      const result = await call(ctx, 'pwsh', {
+        command: 'Write-Output ok', description: 'ordinary', ...justification === undefined ? {} : { justification },
+      }, sandboxAgent('workspace-write'))
+      expect(result.isError, text(result)).toBe(false)
+      expect(bash.modes).toEqual(['workspace-write'])
+      expect(prompted).not.toHaveBeenCalled()
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it.each([undefined, '', ' \t\n'])('rejects escalation with justification %j before execution', async (justification) => {
+    const { ctx, bash } = await setupSandboxed(true)
+    try {
+      const prompted = vi.fn()
+      ctx.on('approval/request', () => { prompted(); return Promise.resolve<ApprovalOutcome>('allowed-once') })
+      const result = await call(ctx, 'pwsh', {
+        command: 'Write-Output ok', description: 'test escalation', sandbox_permissions: 'workspace-write',
+        ...justification === undefined ? {} : { justification },
+      }, sandboxAgent())
+      expect(result.isError).toBe(true)
+      expect(text(result)).toContain(justification === undefined ? 'requires a justification' : 'expected a non-empty sentence')
+      expect(bash.modes).toEqual([])
+      expect(prompted).not.toHaveBeenCalled()
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('rejects injected escalation without a sandbox and narrower escalation without prompting', async () => {
     const plain = await setup()
     expect(text(await call(plain.ctx, 'pwsh', escalate))).toContain('not available in this composition')
@@ -697,6 +731,25 @@ describe('sandbox escalation through ctx.approval', () => {
     const result = await call(ctx, 'pwsh', { ...escalate, sandbox_permissions: mode }, sandboxAgent(mode))
     expect(result.isError).toBe(false)
     expect(bash.modes).toEqual([mode])
+  })
+
+  it.each(['workspace-write', 'danger-full-access'] as const)('runs a repeated %s request without a reason or approval', async (mode) => {
+    const { ctx, bash } = await setupSandboxed(true)
+    try {
+      const prompted = vi.fn()
+      ctx.on('approval/request', () => { prompted(); return Promise.resolve<ApprovalOutcome>('allowed-once') })
+      for (const justification of [undefined, '', ' \t\n']) {
+        const result = await call(ctx, 'pwsh', {
+          command: 'Write-Output ok', description: 'repeat current mode', sandbox_permissions: mode,
+          ...justification === undefined ? {} : { justification },
+        }, sandboxAgent(mode))
+        expect(result.isError, text(result)).toBe(false)
+      }
+      expect(bash.modes).toEqual([mode, mode, mode])
+      expect(prompted).not.toHaveBeenCalled()
+    } finally {
+      await ctx.fiber.dispose()
+    }
   })
 
   it('fails closed when approval cannot be routed', async () => {
