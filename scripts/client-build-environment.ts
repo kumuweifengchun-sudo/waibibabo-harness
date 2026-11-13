@@ -10,6 +10,11 @@ import {
 } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 
+const waibibaboProduct = JSON.parse(readFileSync(new URL('../packages/llm/llm/src/waibibabo-product.json', import.meta.url), 'utf8')) as {
+  name: string
+  version: string
+}
+
 /** Prefix reserved for build-time values that may be embedded in browser artifacts. */
 const CLIENT_BUILD_ENV_PREFIX = 'DSH_CLIENT_'
 
@@ -192,7 +197,7 @@ export function resolveClientBuildEnvironment(
   profile: string | undefined = environment[CLIENT_BUILD_PROFILE_SELECTOR],
 ): ClientBuildEnvironment {
   if (profile === undefined) return clientBuildEnvironment(environment)
-  if (profile === 'official' || profile === 'local') {
+  if (profile === 'official' || profile === 'local' || profile === 'waibibabo') {
     const commitHash = environment[CLIENT_COMMIT_HASH_VARIABLE]
     const version = environment[CLIENT_VERSION_VARIABLE]
     if (commitHash === undefined) {
@@ -203,14 +208,17 @@ export function resolveClientBuildEnvironment(
     }
     return {
       DSH_CLIENT_COMMIT_HASH: commitHash,
-      DSH_CLIENT_VERSION: version,
-      ...(profile === 'official' ? OFFICIAL_CLIENT_BUILD_ENVIRONMENT : {
+      DSH_CLIENT_VERSION: profile === 'waibibabo' ? waibibaboProduct.version : version,
+      ...(profile === 'waibibabo' ? {
+        DSH_CLIENT_BUILD_PROFILE: 'waibibabo',
+        DSH_CLIENT_TITLE: waibibaboProduct.name,
+      } : profile === 'official' ? OFFICIAL_CLIENT_BUILD_ENVIRONMENT : {
         DSH_CLIENT_BUILD_PROFILE: 'local',
         ...(environment.DSH_CLIENT_GIT_DIRTY === 'true' ? { DSH_CLIENT_GIT_DIRTY: 'true' } : {}),
       }),
     }
   }
-  throw new Error(`unknown client build profile ${JSON.stringify(profile)}; expected "official" or "local"`)
+  throw new Error(`unknown client build profile ${JSON.stringify(profile)}; expected "official", "local" or "waibibabo"`)
 }
 
 /**

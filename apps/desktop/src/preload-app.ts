@@ -12,10 +12,12 @@ import { syncWindowsAppearance } from './preload-windows.ts'
 import { installMandatoryUpdateOverlay } from './preload-mandatory-overlay.ts'
 import { createDesktopBrowserBridge } from './preload-browser.ts'
 import type { FileDragHandle } from '@deepseek-ai/dsh-util-file-drag'
+import product from '@deepseek-ai/dsh-waibibabo/src/product.ts'
 
 function createProductApi(): DshDesktopProductApi {
   return {
     protocolVersion: 1,
+    activate: () => ipcRenderer.invoke(DESKTOP_IPC.activate) as Promise<void>,
     fileActions: {
       save: request => ipcRenderer.invoke(DESKTOP_IPC.fileSave, request) as Promise<FileSaveResult>,
       readClipboardImage: url => ipcRenderer.invoke(DESKTOP_IPC.clipboardImageRead, url) as
@@ -100,7 +102,7 @@ if (location.protocol === `${SCHEME}:` && location.hostname === 'app') {
     else body.setAttribute('tabindex', previous)
   })
   syncWindowsAppearance()
-  if (process.platform === 'win32') installMandatoryUpdateOverlay()
+  if (product.managedUpdates && process.platform === 'win32') installMandatoryUpdateOverlay()
   contextBridge.exposeInMainWorld('__DSH_DIRECTORY_PICKER__', {
     pick: () => ipcRenderer.invoke(DESKTOP_IPC.directoryPick) as Promise<string | null>,
   })

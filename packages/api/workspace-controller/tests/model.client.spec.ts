@@ -69,6 +69,9 @@ function deferred<T>(): Deferred<T> {
 }
 
 class FakeWorkspaceRemote implements WorkspaceRemote {
+  readonly edit = vi.fn<WorkspaceRemote['edit']>(async request => remoteOk({ workspace: {
+    ...workspace(String(request.workspaceId)), title: request.title, directories: request.directories,
+  } }))
   readonly initializeDefault = vi.fn<WorkspaceRemote['initializeDefault']>(async () => remoteOk({ workspace: workspace('default') }))
   readonly calls: Array<{ readonly method: string; readonly request: unknown }> = []
   onCreate: (request: WorkspaceCreateRequest) => Promise<RemoteResult<WorkspaceCreateValue>> = request =>
@@ -171,6 +174,16 @@ function baseline(
 }
 
 describe('ClientWorkspaceModel', () => {
+  it('uses the dedicated directory-edit action only when folders are supplied', async () => {
+    const remote = new FakeWorkspaceRemote()
+    const model = new ClientWorkspaceModel(remote)
+    await model.rename(wid('one'), 'Project', ['/projects/front', '/projects/back'])
+    expect(remote.edit).toHaveBeenCalledWith({ workspaceId: 'one', title: 'Project', directories: ['/projects/front', '/projects/back'] })
+    expect(remote.calls).toEqual([])
+    await model.rename(wid('one'), 'Renamed')
+    expect(remote.calls).toContainEqual({ method: 'rename', request: { workspaceId: 'one', title: 'Renamed' } })
+  })
+
   it('publishes the prepared Workspace and leaves the list unchanged on refusal', async () => {
     const remote = new FakeWorkspaceRemote()
     const model = modelFor(remote)

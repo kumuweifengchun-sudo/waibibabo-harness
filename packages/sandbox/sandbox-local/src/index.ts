@@ -34,7 +34,7 @@ import {
 } from '@deepseek-ai/node-addon-system/landlock-run'
 import { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { SandboxProvider, SandboxUnavailableError, SandboxUnsupportedPolicyError, canonicalPath } from '@deepseek-ai/dsh-sandbox'
+import { SandboxProvider, SandboxUnavailableError, canonicalPath, workspaceWritableRoots } from '@deepseek-ai/dsh-sandbox'
 import type { ConfinedArgv, ConfinedSandboxMode, RunnerFailureRule, SandboxEnforcement, SandboxPolicy } from '@deepseek-ai/dsh-sandbox'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import { AclWriteGrant, assertTempRootOutsideWorkspace, registerAclDiagnosisSkill, tempWriteSid, workspaceWriteSid } from '@deepseek-ai/dsh-sandbox-windows-acl'
@@ -367,9 +367,10 @@ export class LocalSandboxProvider extends SandboxProvider {
    * @returns the runner invocation.
    */
   private windowsAclRunnerArgv(policy: SandboxPolicy): string[] {
-    if (policy.mode === 'workspace-write' && (policy.additionalWritableRoots?.length ?? 0) > 0) {
-      throw new SandboxUnsupportedPolicyError('Windows ACL confinement does not support additional writable directories; remove the extra grants or use a supported host')
-    }
+    const extraRoots = policy.mode === 'workspace-write'
+      ? workspaceWritableRoots(policy).filter(root => root !== policy.workspaceRoot) : []
+    for (const root of extraRoots) assertTempRootOutsideWorkspace(root, tmpdir())
+    const extraArgs = extraRoots.flatMap(root => ['--writable-root', root])
     const sessionId = policy.sessionId
     if (sessionId === undefined || policy.mode === 'read-only') {
       return [
@@ -377,14 +378,17 @@ export class LocalSandboxProvider extends SandboxProvider {
         '--workspace', policy.workspaceRoot,
         '--temp', tmpdir(),
         '--mode', policy.mode,
+        ...extraArgs,
       ]
     }
+    for (const root of extraRoots) this.materializeWorkspaceGrant(root)
     const temp = this.materializeAclGrant(sessionId, policy.workspaceRoot)
     return [
       ...this.windowsAclRunnerInvocation(),
       '--workspace', policy.workspaceRoot,
       '--temp', temp.dir,
       '--mode', policy.mode,
+      ...extraArgs,
       '--write-sid', workspaceWriteSid(policy.workspaceRoot),
       '--temp-write-sid', temp.writeSid,
     ]
@@ -405,24 +409,7 @@ export class LocalSandboxProvider extends SandboxProvider {
    */
   private materializeAclGrant(sessionId: SessionId, workspaceRoot: string): AclTempCapability {
     assertTempRootOutsideWorkspace(workspaceRoot, tmpdir())
-    const writeSid = workspaceWriteSid(workspaceRoot)
-    if (!this.workspaceGrants.has(workspaceRoot)) {
-      const grant = AclWriteGrant.create(writeSid)
-      try {
-        grant.add(workspaceRoot, true)
-      } catch (error) {
-        // Free the SID; a standing ACE (if the apply succeeded before a
-        // post-apply throw) is the intended end state, not an error
-        // artifact — nothing to revoke.
-        try {
-          grant.dispose()
-        } catch (cleanupError) {
-          throw new AggregateError([error, cleanupError], 'sandbox-local windows-acl workspace grant failed and its cleanup also failed')
-        }
-        throw error
-      }
-      this.workspaceGrants.set(workspaceRoot, grant)
-    }
+    this.materializeWorkspaceGrant(workspaceRoot)
     const key = JSON.stringify([String(sessionId), workspaceRoot])
     const existing = this.tempCapabilities.get(key)
     if (existing !== undefined) return existing
@@ -454,6 +441,26 @@ export class LocalSandboxProvider extends SandboxProvider {
     const capability = { dir: tempDir, writeSid: tempSid, grant }
     this.tempCapabilities.set(key, capability)
     return capability
+  }
+
+  private materializeWorkspaceGrant(workspaceRoot: string): void {
+    if (!this.workspaceGrants.has(workspaceRoot)) {
+      const grant = AclWriteGrant.create(workspaceWriteSid(workspaceRoot))
+      try {
+        grant.add(workspaceRoot, true)
+      } catch (error) {
+        // Free the SID; a standing ACE (if the apply succeeded before a
+        // post-apply throw) is the intended end state, not an error
+        // artifact — nothing to revoke.
+        try {
+          grant.dispose()
+        } catch (cleanupError) {
+          throw new AggregateError([error, cleanupError], 'sandbox-local windows-acl workspace grant failed and its cleanup also failed')
+        }
+        throw error
+      }
+      this.workspaceGrants.set(workspaceRoot, grant)
+    }
   }
 
   /**

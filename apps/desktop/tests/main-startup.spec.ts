@@ -19,6 +19,16 @@ import { runOperationReportJob } from '../src/operation-report-job.ts'
 type InvokeEvent = { sender?: unknown; senderFrame: { url: string } }
 type InvokeHandler = (event: InvokeEvent, ...args: unknown[]) => unknown
 
+const productMode = vi.hoisted(() => ({ platformAccounts: false, managedUpdates: true, chineseOnly: false }))
+vi.mock('../src/product.ts', async importOriginal => ({
+  ...await importOriginal<typeof import('../src/product.ts')>(),
+  desktopProduct: { name: 'Waibibabo Harnesss', version: '0.1.0',
+    get platformAccounts() { return productMode.platformAccounts },
+    get managedUpdates() { return productMode.managedUpdates },
+    get chineseOnly() { return productMode.chineseOnly },
+  },
+}))
+
 const fileDrag = vi.hoisted(() => ({ dispose: vi.fn<() => Promise<void>>(), install: vi.fn() }))
 vi.mock('../src/file-drag.ts', () => ({ installDesktopFileDrag: () => { fileDrag.install(); return fileDrag.dispose } }))
 
@@ -178,6 +188,7 @@ const harness = await vi.hoisted(async () => {
   const app = Object.assign(new EventEmitter(), {
     isPackaged: true,
     name: 'Desktop test',
+    setName: vi.fn((name: string): void => { app.name = name }),
     whenReady: () => Promise.resolve(),
     getLocale: (): string => 'en-US',
     getPreferredSystemLanguages: () => ['en-US'],
@@ -449,6 +460,7 @@ function applicationMenuItems(): MenuItemConstructorOptions[] {
 }
 
 beforeEach(() => {
+  Object.assign(productMode, { platformAccounts: false, managedUpdates: true, chineseOnly: false })
   vi.resetModules()
   vi.clearAllMocks()
   harness.dialog.showMessageBox.mockReset()
@@ -497,6 +509,20 @@ afterEach(async () => {
 })
 
 describe('desktop main startup', () => {
+  it('activates the product window after browser authorization only for its own renderer', async () => {
+    Object.assign(productMode, { platformAccounts: true, managedUpdates: false, chineseOnly: true })
+    await readyForUpdate()
+    const window = harness.windows[0]!
+    await window.shown.promise
+    window.show.mockClear()
+    window.focus.mockClear()
+    await invoke(DESKTOP_IPC.activate, 'app')
+    expect(window.show).toHaveBeenCalledOnce()
+    expect(window.focus).toHaveBeenCalledOnce()
+    expect(() => invoke(DESKTOP_IPC.activate, 'untrusted')).toThrow('unowned renderer')
+    expect(window.focus).toHaveBeenCalledOnce()
+  })
+
   it.each([true, false])('selects the package manager before Host startup (packaged=%s)', async (packaged) => {
     harness.app.isPackaged = packaged
     await readyForUpdate()
@@ -854,7 +880,7 @@ describe('desktop main startup', () => {
     expect({ menu: [{ label: about!.label, role: about!.role }, separator], options: { ...options, iconPath: '<app icon>' } })
       .toEqual(expected[`${platform}:${locale}`])
     expect(options.iconPath).toBe(packaged ? join('desktop-test-resources', 'icon.png')
-      : join('desktop-test-app', 'resources', 'icon-windows.png'))
+      : join('desktop-test-app', '..', '..', 'packages', 'bundle', 'waibibabo', 'src', 'client', 'assets', 'icon.png'))
     if (platform !== 'win32') { expect(about!.click).toBeUndefined(); return }
     // Windows reuses the dimmed update dialog because Electron's fallback is a bare message box.
     harness.dialog.showMessageBox.mockResolvedValueOnce({ response: 0 })
@@ -862,8 +888,8 @@ describe('desktop main startup', () => {
     await vi.advanceTimersByTimeAsync(0)
     const zh = locale === 'zh-CN'
     expect(harness.dialog.showMessageBox).toHaveBeenLastCalledWith(expect.objectContaining({
-      type: 'info', title: zh ? '关于 DeepSeek Harness' : 'About DeepSeek Harness', message: 'DeepSeek Harness',
-      detail: zh ? '版本 V1.0.0' : 'Version V1.0.0', buttons: [zh ? '确定' : 'OK'], cancelId: 0,
+      type: 'info', title: zh ? '关于 Waibibabo Harnesss' : 'About Waibibabo Harnesss', message: 'Waibibabo Harnesss',
+      detail: `${zh ? '版本' : 'Version'} V${packaged ? '1.0.0' : '0.1.0'}`, buttons: [zh ? '确定' : 'OK'], cancelId: 0,
     }))
     // A dialog that cannot open is logged, not surfaced as an unhandled rejection.
     harness.dialog.showMessageBox.mockRejectedValueOnce(new Error('overlay unavailable'))
@@ -1306,7 +1332,7 @@ describe('desktop main startup', () => {
     expect(() => handler(event, 'application', NaN, 34)).toThrow('invalid popup request')
     const application = handler(event, 'application', 48, 34)
     expect(harness.menu.buildFromTemplate.mock.lastCall![0].map(item => item.label ?? item.type)).toEqual([
-      '关于 DeepSeek Harness', 'separator', '检查更新…', '管理 dsh 命令…', 'separator', zh.toggleDevToolsMenu, 'separator', '退出',
+      '关于 Waibibabo Harnesss', 'separator', '检查更新…', '管理 dsh 命令…', 'separator', zh.toggleDevToolsMenu, 'separator', '退出',
     ])
     expect(harness.popup.mock.lastCall![0]).toMatchObject({ window, x: 48, y: 34 })
     expect(harness.popup.mock.lastCall![0].callback).toBeTypeOf('function')
@@ -1339,7 +1365,7 @@ describe('desktop main startup', () => {
       .find(items => items.some(item => item.role === 'editMenu'))
     if (template === undefined) throw new Error('application menu missing')
     expect(template.map(describeItem)).toEqual(platform === 'darwin'
-      ? ['Desktop test', en.fileMenu, 'editMenu', 'windowMenu']
+      ? ['Waibibabo Harnesss', en.fileMenu, 'editMenu', 'windowMenu']
       : ['Application', 'editMenu'])
     const describeEdit = (items: MenuItemConstructorOptions[]): unknown[] => items.map(item => Array.isArray(item.submenu)
       ? [describeItem(item), describeEdit(item.submenu)]
@@ -1371,7 +1397,7 @@ describe('desktop main startup', () => {
       const commands = applicationMenuItems().filter(item => item.visible !== false)
       await expect(JSON.stringify(commands, null, 2) + '\n')
         .toMatchFileSnapshot(`./expected/application-menu-${locale}.json`)
-      expect(harness.app.name).toBe('@deepseek-ai/dsh-desktop')
+      expect(harness.app.name).toBe('Waibibabo Harnesss')
     } finally { harness.app.name = originalName }
   })
 
@@ -2690,7 +2716,7 @@ describe('desktop main startup', () => {
     expect(report.error).toBeInstanceOf(Error)
     expect((report.error as Error).message).toContain('fatal uncaught exception: ENOENT')
     expect(report.rendererConsole).toEqual(['dsh-app://app/assets/entry.js:12 client-modules: bundle script plugins/??a/client.js&rev=1 failed to load'])
-    expect(report.app).toMatchObject({ name: 'Desktop test', version: '1.0.0', platform: process.platform, locale: 'en' })
+    expect(report.app).toMatchObject({ name: 'Waibibabo Harnesss', version: '1.0.0', platform: process.platform, locale: 'en' })
     expect(report.time).toBeInstanceOf(Date)
     host.exited.resolve()
     await harness.quitCompleted.promise

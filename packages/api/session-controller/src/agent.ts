@@ -54,6 +54,8 @@ class ApiSessionStartedSinceObserved extends Error {}
 
 /** Placement and Agent preset for one Session created for a new conversation. */
 export interface ApiSessionCreateRequest {
+  /** A workspace primary-directory change creates a fresh Session instead of reusing an old-directory draft. */
+  readonly mintOnCwdChange?: boolean
   /** Blank Session to reuse, or the identity of a new Session when none is stored under it. */
   readonly sessionId?: SessionId
   /** Directory the Session owns. */
@@ -337,6 +339,7 @@ export class ApiSessionAgentController {
     }
     if (live !== undefined) {
       if (live.session.header.cwd !== request.cwd) {
+        if (request.mintOnCwdChange) return this.createMinted(request.cwd, await this.composeAgent(request.agentPreset))
         throw new ApiSessionCwdConflict(live.id, request.cwd, live.session.header.cwd)
       }
       const composition = await this.composeAgent(request.agentPreset)
@@ -356,6 +359,7 @@ export class ApiSessionAgentController {
         throw new ApiSessionSubagentOwnership(sessionId)
       }
       if (observed.header.cwd !== request.cwd) {
+        if (request.mintOnCwdChange) return await this.createMinted(request.cwd, await this.composeAgent(request.agentPreset))
         throw new ApiSessionCwdConflict(sessionId, request.cwd, observed.header.cwd)
       }
       reusable = request.reusable(sessionId) && !observed.events.some(event => event.type === 'turn/start')

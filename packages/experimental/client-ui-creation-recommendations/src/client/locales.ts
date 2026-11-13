@@ -64,7 +64,7 @@ export const zh: Record<RecommendationKey, string> = {
   failed: '创建失败，可重试', interrupted: '创建中断，可重试',
   unconfirmed: '结果待确认，请重试',
   'invalid-location': '请选择位置，或填写不超过 1,000 字的位置说明',
-  'restart-required': '变更已保存，重启 DSH 后生效',
+  'restart-required': '变更已保存，重启 WSS 后生效',
   overridden: '其他配置覆盖了本次变更', cancelled: '已取消',
   applicationFailed: '上一步更改未生效，请到插件页查看',
   applicationCancelled: '上一步更改已取消',

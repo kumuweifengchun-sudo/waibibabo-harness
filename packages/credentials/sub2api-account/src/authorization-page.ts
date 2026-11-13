@@ -1,0 +1,27 @@
+/** Branded loopback result page with no scripts, external resources or authorization parameters. */
+
+/** Render the settled authorization outcome in the desktop product's light and dark styles.
+ * @param productName - Configured product name, escaped before insertion into HTML.
+ * @param success - Whether the authorization exchange and local credential commit completed.
+ * @returns standalone Chinese HTML; no credentials or callback URL are included.
+ */
+export function authorizationPage(productName: string, success: boolean): string {
+  const name = productName.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;').replaceAll("'", '&#39;')
+  const title = success ? '登录成功' : '授权未完成'
+  const description = success ? '平台账号已连接，请返回客户端继续使用。' : '此次授权未完成，请返回客户端重新发起登录。'
+  return `<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark"><title>${title} · ${name}</title>
+<style>
+:root{color-scheme:light dark;--background:#f5f5f5;--surface:#fff;--text:#202123;--muted:#68696c;--border:#e4e4e7;--badge:#f0f0f2}
+@media(prefers-color-scheme:dark){:root{--background:#121212;--surface:#2b2b2d;--text:#f5f5f5;--muted:#b8b8be;--border:#414144;--badge:#38383b}}
+*{box-sizing:border-box}body{margin:0;min-height:100svh;display:grid;place-items:center;padding:24px;background:var(--background);color:var(--text);font:14px/1.6 "Segoe UI","Microsoft YaHei",sans-serif}
+main{width:100%;max-width:480px;padding:32px;border:1px solid var(--border);border-radius:20px;background:var(--surface)}
+header{font-size:15px;font-weight:500;overflow-wrap:anywhere}.result{margin-top:28px}.mark{display:grid;place-items:center;width:44px;height:44px;border-radius:50%;background:var(--badge);font-size:24px}
+h1{margin:16px 0 8px;font-size:24px;line-height:1.35;font-weight:500}p{margin:0;color:var(--muted)}footer{margin-top:28px;padding-top:20px;border-top:1px solid var(--border);font-size:13px;color:var(--muted)}
+@media(max-width:400px){body{padding:16px}main{padding:24px}}
+</style></head><body><main><header>${name}</header><section class="result" role="${success ? 'status' : 'alert'}">
+<span class="mark" aria-hidden="true">${success ? '✓' : '!'}</span><h1>${title}</h1><p>${description}</p>
+</section><footer>你可以关闭此页面，回到 ${name}</footer></main></body></html>`
+}

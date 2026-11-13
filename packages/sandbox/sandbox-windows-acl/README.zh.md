@@ -25,11 +25,15 @@ kind: "package-library"
 <a id="use-this-package"></a>
 ## 使用本包
 
+runner 接受重复的 `--writable-root` 参数来指定物理附加目录。每个目录使用独立的 `workspaceWriteSid`，因此移除附加目录或切换主要目录后，后续令牌不再包含旧授权。由服务管理时，提供方拥有全部持久 ACL；独立运行时由 runner 在创建进程前配置。`AclSandboxOptions.additionalWriteSids` 将调用方管理的目录权限加入令牌，不管理其 ACL；只读模式拒绝非空列表。
+
 在 Windows 上，挂载本地沙箱提供方后，此后端就是 `ctx.sandbox` 背后的 runner——无需额外配置。要在 harness 之外 spawn 受限子进程时，直接嵌入 `AclSandbox` API。
 
 ### 何时选择
 
 为在 `read-only` 或 `workspace-write` 下隔离子进程文件操作的 Windows 组合选择它。当子进程还需要读侧隔离或网络限制时请另选机制：`WRITE_RESTRICTED` 只交叉检查写访问，因此请把此后端与读侧策略或 AppContainer 能力令牌配对以获得更强隔离。
+
+为工作区授权时若 `SetNamedSecurityInfoW` 返回访问被拒绝，命令不会启动，错误会说明所需的 `WRITE_DAC` 与 `WRITE_OWNER` 权限。普通文件修改权限不包含这两项权限；后端不会绕过隔离重试，也不会默默扩大调用者权限。
 
 ### 直接 API
 

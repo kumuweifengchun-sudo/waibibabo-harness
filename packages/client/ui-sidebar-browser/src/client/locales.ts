@@ -22,7 +22,7 @@ export const zh = {
   'error.invalid': '这个地址无效或过长。',
   'error.protocol': '只支持 HTTP 和 HTTPS 地址；本地文件请使用文档预览。',
   'error.credentials': '地址不能包含用户名或密码。',
-  'error.application-origin': '不能在嵌入浏览器中打开 DSH 应用自身。',
+  'error.application-origin': '不能在嵌入浏览器中打开 WSS 应用自身。',
   'load.failed': '页面加载失败；请刷新重试或在系统浏览器中打开。',
   'load.failed.detail': '页面加载失败 ({code}): {description}',
   'address.unknown': '页面已跳转；当前载体无法读取新的 URL。',

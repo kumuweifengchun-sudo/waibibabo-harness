@@ -19,6 +19,8 @@ export interface WorkspaceView {
   readonly workspaceId: WorkspaceId
   /** Canonical host directory path. */
   readonly path: string
+  /** Authorized directories, primary first. Absent only on older Hosts with one directory. */
+  readonly directories?: readonly string[]
   /** User-visible title. */
   readonly title: string
   /** Sessions accounted to this Workspace in manual order. */
@@ -76,6 +78,12 @@ export interface WorkspaceCreateValue {
 export interface WorkspaceRenameRequest {
   readonly workspaceId: WorkspaceId
   readonly title: string
+}
+
+/** Workspace title and authorized-directory mutation; requires workspace/edit permission. */
+export interface WorkspaceEditRequest extends WorkspaceRenameRequest {
+  /** Replace authorized directories atomically with the title; the first becomes primary. */
+  readonly directories: readonly string[]
 }
 
 /** Workspace mutation returning the complete changed row. */

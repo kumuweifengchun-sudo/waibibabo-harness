@@ -39,6 +39,18 @@ export function WorkspaceId(id: string): WorkspaceId {
   return id as WorkspaceId
 }
 
+/** A directory edit failed validation before any workspace data was changed. */
+export class WorkspaceDirectoryError extends Error {
+  /**
+   * @param path - rejected path.
+   * @param message - actionable description.
+   */
+  constructor(readonly path: string, message: string) {
+    super(message)
+    this.name = 'WorkspaceDirectoryError'
+  }
+}
+
 /**
  * An archiveSession or pinSession request named a session neither live nor in
  * session persistence — a definite miss only; storage faults propagate as
@@ -179,6 +191,7 @@ export class WorkspaceRegistry extends Service {
   private readonly missingSessionPaths = new Set<SessionId>()
   private readonly invalidSessionPaths = new Map<SessionId, string>()
   private operationTail: Promise<void> = Promise.resolve()
+  private readonly editingDirectories = new Set<WorkspaceId>()
 
   private readonly host: WorkspaceEntityHost = {
     table: () => this.requireTable(),
@@ -281,6 +294,83 @@ export class WorkspaceRegistry extends Service {
    */
   get(id: WorkspaceId): Workspace | undefined {
     return this.entities.get(id)
+  }
+
+  /**
+   * Find a Session's workspace, inheriting it only through subagent ancestry.
+   * Directory edits temporarily reject policy resolution until their durable write settles.
+   * @param header - caller's immutable Session metadata.
+   * @returns the owning workspace, or undefined for an ungrouped Session.
+   */
+  forSession(header: SessionHeader): Workspace | undefined {
+    const workspace = this.ownerOf(header)
+    if (workspace !== undefined && this.editingDirectories.has(workspace.id)) {
+      throw new Error('工作区目录正在保存，请稍后重试任务')
+    }
+    return workspace
+  }
+
+  private ownerOf(header: SessionHeader): WorkspaceEntity | undefined {
+    const seen = new Set<SessionId>()
+    let current: SessionHeader | undefined = header
+    while (current !== undefined && !seen.has(current.id)) {
+      seen.add(current.id)
+      const id = current.id
+      const direct = [...this.entities.values()].find(workspace => workspace.sessionIds.includes(id))
+      if (direct !== undefined) return direct
+      if (current.origin !== 'subagent' || current.parentSession === undefined) return undefined
+      current = this.ctx.get('sessions')?.get(current.parentSession)?.header ?? this.headers.get(current.parentSession)
+    }
+    return undefined
+  }
+
+  /**
+   * Save a title and canonical authorized directories atomically. New Sessions use the first directory.
+   * Running work and persistent terminals must finish before the directory grants can change.
+   * @param id - workspace identity.
+   * @param title - validated display title.
+   * @param directories - authorized directories, primary first; omission preserves them.
+   * @returns the updated workspace after durability.
+   */
+  update(id: WorkspaceId, title: string, directories?: readonly string[]): Promise<Workspace> {
+    return this.enqueueOperation(async () => {
+      const workspace = this.entities.get(id)
+      if (workspace === undefined) throw new Error(`unknown workspace '${id}'`)
+      if (directories === undefined || directories.length === workspace.directories.length
+        && directories.every((path, index) => path === workspace.directories[index])) {
+        if (title !== workspace.title) await workspace.setTitle(title)
+        return workspace
+      }
+      const canonical: string[] = []
+      for (const path of directories) {
+        try {
+          const resolved = await realpathNormalize(path)
+          if (!(await stat(resolved)).isDirectory()) throw new Error('不是文件夹')
+          if (!canonical.includes(resolved)) canonical.push(resolved)
+        } catch (error) {
+          throw new WorkspaceDirectoryError(path, `无法使用文件夹 ${path}：${String(error)}`)
+        }
+      }
+      const primary = canonical[0]
+      if (primary === undefined) throw new WorkspaceDirectoryError('', '工作区至少需要一个文件夹')
+      if ([...this.entities.values()].some(other => other.id !== id && other.path === primary)) {
+        throw new WorkspaceDirectoryError(primary, '该主要文件夹已属于另一个工作区，请将其添加为附加文件夹')
+      }
+      this.editingDirectories.add(id)
+      try {
+        const headers = new Map(this.headers)
+        for (const session of this.ctx.get('sessions')?.list() ?? []) headers.set(session.id, session.header)
+        for (const header of headers.values()) {
+          if (this.ownerOf(header)?.id !== id) continue
+          const activity = await this.ctx.waterfall('workspace/session-activity', { sessionId: header.id }, () => Promise.resolve([]))
+          if (activity.length > 0) throw new WorkspaceActiveSessionError(header.id, activity)
+        }
+        await workspace.update(title, canonical)
+      } finally {
+        this.editingDirectories.delete(id)
+      }
+      return workspace
+    })
   }
 
   /**
@@ -763,14 +853,15 @@ export class WorkspaceRegistry extends Service {
     const paths = new Map<string, WorkspaceId>()
     const accounted = new Map<SessionId, WorkspaceId>()
     for (const [id, record] of table.entries()) {
-      const pathHolder = paths.get(record.path)
+      const primary = record.directories?.[0] ?? record.path
+      const pathHolder = paths.get(primary)
       if (pathHolder !== undefined) {
         throw new Error(
           `workspace domain is inconsistent: path '${record.path}' is claimed `
           + `by both workspace '${pathHolder}' and workspace '${id}'`,
         )
       }
-      paths.set(record.path, id)
+      paths.set(primary, id)
       for (const sessionId of record.sessionIds) {
         const holder = accounted.get(sessionId)
         if (holder !== undefined) {
@@ -845,7 +936,7 @@ export class WorkspaceRegistry extends Service {
     for (const entity of this.entities.values()) {
       const record = this.requireTable().get(entity.id) as WorkspaceRecord
       for (const sessionId of record.sessionIds) {
-        if (this.host.candidateMatches(sessionId, record.path)) continue
+        if ([record.path, ...(record.membershipPaths ?? [])].some(path => this.host.candidateMatches(sessionId, path))) continue
         const path = this.sessionPaths.get(sessionId)
         const reason = this.invalidSessionPaths.get(sessionId)
           ?? (this.headers.has(sessionId)

@@ -313,7 +313,7 @@ interface LlmImageRequestPricing {
 
 ## `AppIdentity`：应用归属
 
-每个适配器都会向提供方发送的静态公开应用标识（[`packages/llm/llm/src/attribution.ts`](../../packages/llm/llm/src/attribution.ts)）。`attributionHeaders(identity?)` 只把它映射到标准 `User-Agent` header；该约定有意不支持 OpenRouter 特有的应用归属 header。默认 `APP_IDENTITY` 从包 manifest（元数据清单）获取版本；每个字段都是公开产品事实——不含 secret、路径、会话 id 或逐用户标识，且任何逐请求信息都不得影响这些值。
+每个适配器都会向提供方发送的静态公开应用标识（[`packages/llm/llm/src/attribution.ts`](../../packages/llm/llm/src/attribution.ts)）。`attributionHeaders(identity?)` 只把它映射到标准 `User-Agent` header；该约定有意不支持 OpenRouter 特有的应用归属 header。默认 `APP_IDENTITY` 发送 `wss/<version>`，使用[桌面产品版本](../../packages/llm/llm/src/waibibabo-product.json)，不附带网址注释。自定义标识可声明 `url` 以附加 `(+url)`。每个字段都是公开产品事实——不含 secret、路径、会话 id 或逐用户标识，且任何逐请求信息都不得影响这些值。
 
 ```ts type-equiv
 /**
@@ -326,10 +326,10 @@ interface LlmImageRequestPricing {
 interface AppIdentity {
   /** `User-Agent` product token (lowercase, hyphenated). */
   product: string
-  /** Product version; sourced from package metadata, never hand-copied. */
+  /** Product version; sourced from product metadata, never hand-copied. */
   version: string
-  /** Repository home URL of the app, used as the `User-Agent` comment. */
-  url: string
+  /** Optional public URL included as a `User-Agent` comment. */
+  url?: string
 }
 ```
 

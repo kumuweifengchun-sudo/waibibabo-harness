@@ -157,6 +157,20 @@ describe('TerminalSessionService backend registry', () => {
 })
 
 describe('TerminalSessionService ownership and lifecycle', () => {
+  it('reports idle open terminals as workspace activity until they are closed', async () => {
+    const ctx = await harness()
+    try {
+      ctx.terminals.registerBackend(backend().provider)
+      const owner = stubAgent(ctx, 'workspace-terminal')
+      await ctx.agents.register(owner)
+      const activity = () => ctx.waterfall('workspace/session-activity', { sessionId: owner.id }, () => Promise.resolve([]))
+      expect(await activity()).toEqual([])
+      const terminal = await ctx.terminals.spawn(owner, { type: 'stub' })
+      expect(await activity()).toEqual([{ kind: 'terminal' }])
+      await ctx.terminals.kill(owner, terminal.sessionId)
+      expect(await activity()).toEqual([])
+    } finally { await ctx.fiber.dispose() }
+  })
   it('publishes only after spawn and fences every operation to the exact owner', async () => {
     const ctx = await harness()
     const b = backend()

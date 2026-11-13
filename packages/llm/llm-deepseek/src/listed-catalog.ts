@@ -1,11 +1,14 @@
 /** A listed catalog: version gating, this build's model knowledge, and deployment overrides. */
 import semver from 'semver'
-import { APP_IDENTITY, LlmError } from '@deepseek-ai/dsh-llm'
+import { LlmError } from '@deepseek-ai/dsh-llm'
+import { createRequire } from 'node:module'
 import type { LlmModelBadge } from '@deepseek-ai/dsh-llm'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { resolveAdapterOptions } from './config.ts'
 import type { ListedFacts, ListingEntry } from './listing.ts'
 import type { DeepSeekCatalogModel } from './types.ts'
+
+const { version: transportVersion } = createRequire(import.meta.url)('../package.json') as { version: string }
 
 /** Field overrides for one model; unset fields and empty lists inherit the underlying entry. */
 export type ModelOverride = Omit<DeepSeekCatalogModel, 'id'>
@@ -174,11 +177,11 @@ export function refuseListedModel(model: string, refusal: CatalogRefusal | undef
   switch (refusal.kind) {
     case 'upgrade-required':
       throw new LlmError(
-        `DeepSeek model "${model}" requires DeepSeek Harness ${refusal.requiredVersion} or later; current version is ${APP_IDENTITY.version}`,
+        `DeepSeek model "${model}" requires DeepSeek Harness ${refusal.requiredVersion} or later; current version is ${transportVersion}`,
         'CLIENT_UPGRADE_REQUIRED',
       )
     case 'unsupported':
-      throw new LlmError(`DeepSeek model "${model}" is not supported by DeepSeek Harness; current version is ${APP_IDENTITY.version}`, 'MODEL_UNSUPPORTED')
+      throw new LlmError(`DeepSeek model "${model}" is not supported by DeepSeek Harness; current version is ${transportVersion}`, 'MODEL_UNSUPPORTED')
     /* v8 ignore next 2 -- catalog resolution produces only the closed refusal union */
     default:
       assertNever(refusal, 'listed catalog refusal')

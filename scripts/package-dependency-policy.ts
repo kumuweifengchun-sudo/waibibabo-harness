@@ -7,6 +7,8 @@ const CLIENT_FACE_INCLUDE: readonly string[] = []
 const CLIENT_FACE_EXCLUDE: readonly string[] = [
   '@deepseek-ai/dsh-api-session-controller',
   '@deepseek-ai/dsh-api-workspace-controller',
+  // This bundle installs its cordis.patch.yml plugins through its runtime dependency manifest.
+  '@deepseek-ai/dsh-waibibabo',
 ]
 
 /** Host-only packages whose peer relays are deliberately flattened. */
@@ -75,6 +77,12 @@ const SAFE_HOST_DEPENDENCY_EXPORTS = {
 
 /** Runtime exports that require every consumer to resolve the provider's shared peer instance. */
 const PEER_REQUIRED_HOST_EXPORTS = {
+  // Account routes share the active LLM provider's error identity and attachment access implementation.
+  '@deepseek-ai/dsh-llm': ['LlmError', 'resolveImageAttachmentAccess'],
+  // Native account routes use the installed pi-ai provider's profile, adapter and credential implementation together.
+  '@deepseek-ai/dsh-llm-pi-ai': ['PiAiAdapter'],
+  '@deepseek-ai/dsh-llm-pi-ai/config': ['resolveProfiles'],
+  '@deepseek-ai/dsh-llm-pi-ai/auth': ['authContextFrom', 'credentialStoreFrom'],
   // Profile settings must match the installed Node provider's configuration schema.
   '@deepseek-ai/dsh-ptc-runtime-node/configuration': ['resolvePersistentExecution'],
   // CUA checks UserQuestionError and preserves AttachmentError from image admission.

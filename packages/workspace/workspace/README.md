@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to keep an ordered, persistent list of project directories and the sessions run in each directory. Hosts can build project sidebars, hide sessions from grouping without deleting their histories, and remove projects without deleting folders, files, or sessions. Re-adding a removed directory creates a fresh project; an existing project's sessions stay grouped when its directory disappears. Choose it for GUI or host workflows that need durable project grouping; it is invisible to models and adds no prompt or request-context cost, but requires session persistence and storage backends.
+Use this package to keep an ordered, persistent list of project directories and the sessions run in each directory. Hosts can build project sidebars, hide sessions from grouping without deleting their histories, and remove projects without deleting folders, files, or sessions. Re-adding a removed directory creates a fresh project; an existing project's sessions stay grouped when its directory disappears. Choose it for GUI or host workflows that need durable project grouping; it requires session persistence and storage backends. Sandbox policy consumes its directory grants and logs them as request context.
 
 ## Table of Contents
 
@@ -25,11 +25,13 @@ Use this package to keep an ordered, persistent list of project directories and 
 <a id="use-this-package"></a>
 ## Use this package
 
+Each workspace can authorize several existing folders. `workspaceRegistry.update(id, title, directories)` commits the title and directory list together; the first directory becomes `Workspace.path` and the default cwd for new Sessions. Additional folders may be shared by workspaces, but primary directories remain unique. Existing Sessions retain their current directory and membership when the primary changes or a folder is removed. Historical primary paths validate membership only; sandbox permissions use the current directory list. Active turns, jobs, subagents, schedules, and open terminals block directory edits. A pending edit rejects new policy resolution until its write settles. Legacy records without `directories` contain only their original path.
+
 Use this package to give the product a project list: named directories the user works in, the sessions that ran in each, a stable order, and a way to hide sessions without losing them or bring them back. The API contracts behind each action live in the implementation section.
 
 ### When to use it
 
-Use it when the product shows a persistent workspace surface — a sidebar, session grouping, or automation that names directories and orders them. It is invisible to the model, so it adds no token or request cost. Skip it when there is no grouping surface; nothing else in the harness needs it.
+Use it when the product shows a persistent workspace surface — a sidebar, session grouping, or automation that names directories and orders them. Sandbox policy reads its directory grants when present. Headless compositions without registered workspaces retain their configured roots.
 
 ### Setting up
 
@@ -90,7 +92,7 @@ This section explains the design decisions behind the feature and points at the 
 
 ### Design philosophy
 
-- **One record per canonical path.** `fs.realpath` is the single uniqueness canon: paths are stored canonicalized, so a symlink to an owned directory collides, and uniqueness is string equality of canonical paths.
+- **One record per canonical primary path.** `fs.realpath` is the single uniqueness canon: paths are stored canonicalized, so a symlink to an owned directory collides, and uniqueness is string equality of canonical paths.
 - **Membership starts from the recorded account.** The header index validates ordered `sessionIds`; missing-directory candidates retain their account, while other invalid candidates are filtered on read and pruned by the next mutation. The strict canonical-path index used for history bootstrap includes existing directories only.
 - **Header-only reads.** Bootstrap and attach validation read `SessionHeader` fields only; event bodies are never loaded.
 - **Two-write mutations with an explicit marker.** Create and delete persist a `pendingMutation` marker before the record/order pair can diverge, so startup completes exactly the interrupted operation and unmarked divergence fails loud as corruption.
@@ -148,7 +150,7 @@ Read these pages when this package's view is not enough: the subsystem reference
 
 #### What the model sees
 
-Nothing. `ctx.workspaceRegistry` serves workspace records to host-side consumers only: the package registers no tools, injects no prompts, and writes no session events, so no request field ever carries this package's data.
+The registry adds no tools or Session events. `sandbox:policy` reads the current folder list and includes it in the logged runtime context; subagents inherit their workspace through their creator.
 
 #### Token effect
 
@@ -156,7 +158,7 @@ Zero direct tokens on every request.
 
 #### KV Cache effect
 
-Independent of live requests: the package never touches a request prefix, so it cannot invalidate provider cache reuse.
+Folder edits change subsequent runtime context. Stable directory lists keep that contribution unchanged.
 
 ## Known Limitations and Deferred Work
 

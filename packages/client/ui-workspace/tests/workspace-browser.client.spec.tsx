@@ -2478,7 +2478,7 @@ describe('WorkspaceBrowser', () => {
     browser.openDialog(wid('alpha'), '默认工作区', 'rename')
     expect(screen.getByLabelText<HTMLInputElement>('工作区名称').value).toBe('默认工作区')
     expect(screen.queryByRole('alert')).toBeNull()
-    const confirm = screen.getByRole<HTMLButtonElement>('button', { name: '重命名' })
+    const confirm = screen.getByRole<HTMLButtonElement>('button', { name: '保存' })
     expect(confirm.disabled).toBe(false)
     fireEvent.click(confirm)
     expect(renameWorkspace).toHaveBeenCalledWith(wid('alpha'), '默认工作区')
@@ -2495,15 +2495,15 @@ describe('WorkspaceBrowser', () => {
     const input = screen.getByLabelText<HTMLInputElement>('工作区名称')
     expect(input.value).toBe('Alpha')
     // Unchanged and blank names stay blocked.
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: '重命名' }).disabled).toBe(true)
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: '保存' }).disabled).toBe(true)
     fireEvent.change(input, { target: { value: '   ' } })
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: '重命名' }).disabled).toBe(true)
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: '保存' }).disabled).toBe(true)
     // A duplicate of another workspace's title shows the inline conflict.
     fireEvent.change(input, { target: { value: ' Beta ' } })
     expect(screen.getByRole('alert').textContent).toBe('已存在名为“Beta”的工作区。')
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: '重命名' }).disabled).toBe(true)
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: '保存' }).disabled).toBe(true)
     fireEvent.change(input, { target: { value: 'Gamma' } })
-    fireEvent.click(screen.getByRole('button', { name: '重命名' }))
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
     expect(renameWorkspace).toHaveBeenCalledWith(wid('alpha'), 'Gamma')
     // While renaming: input disabled, close blocked, Enter ignored.
     expect(input.disabled).toBe(true)
@@ -2548,7 +2548,7 @@ describe('WorkspaceBrowser', () => {
     })
     browser.openDialog(wid('alpha'), 'Alpha', 'rename')
     fireEvent.change(screen.getByLabelText('工作区名称'), { target: { value: 'Other' } })
-    fireEvent.click(screen.getByRole('button', { name: '重命名' }))
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => { expect(screen.getByRole('alert').textContent).toBe('denied') })
   })
 

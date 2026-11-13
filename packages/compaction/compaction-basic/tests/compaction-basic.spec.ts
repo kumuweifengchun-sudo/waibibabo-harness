@@ -312,6 +312,7 @@ describe('compact configuration and defaults', () => {
     const resolved = resolveConfig({})
 
     expect(resolved).toEqual({
+      adaptiveBudget: true,
       thresholdRatio: 0.8,
       headroomTokens: 65_536,
       retainRatio: 0.16,
@@ -341,6 +342,17 @@ describe('compact configuration and defaults', () => {
       maxTokens: 512,
       modelPolicies: [{ ...target, headroomTokens: 0, maxTokens: 32 }],
     }), target).maxTokens).toBe(32)
+  })
+
+  it('adapts automatic headroom and summary output to a small model budget', () => {
+    const target = { provider: MODEL, model: MODEL }
+    const policy = resolveTargetPolicy(resolveConfig(), target)
+    const spec = resolveCompactSpec(policy, 32768, 4096)
+    expect(spec.thresholdTokens).toBeGreaterThan(spec.retainTokens)
+    expect(spec.thresholdTokens).toBeLessThan(32768 - 4096)
+    expect(spec.maxTokens).toBe(4096)
+    expect(resolveTargetPolicy(resolveConfig({ headroomTokens: 1024 }), target).adaptiveBudget).toBe(false)
+    expect(() => resolveConfig({ adaptiveBudget: 'yes' } as never)).toThrow(/adaptiveBudget must be a boolean/)
   })
 
   it('rejects a zero summary cap inherited from headroom', () => {

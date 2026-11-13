@@ -2,7 +2,7 @@
 
 [English](workspace.md) | 中文
 
-工作区（workspace）是用户工作目录的持久记录：一个建立在规范路径之上的稳定 id、一个显示标题，以及归属于它的会话的有序账本。该子系统是单个包（package）（[dsh-workspace](../../packages/workspace/workspace)，`ctx.workspaceRegistry`）——一项宿主侧可选能力，不属于 agent loop（智能体循环）主干，并且对模型不可见（没有工具、没有提示词文本、没有会话事件）。它通过[存储领域数据形式](storage.zh.md)存储自己的记录，并对照 [`SessionHeader.cwd`](persistence.zh.md#sessionheader--metadata-beside-the-log) 校验会话成员资格，因此 `storageDomain` 与 `sessionPersistence` 是必需的启动依赖：持久化这一依赖不可用时，插件保持 pending，而不是把这种不可用误当作空历史。设计记录：[领域 KV 存储 Agent Note（agent 决策记录）](../../.agents/notes/proposed/architecture/2026-07-24-domain-kv-storage-and-workspace.zh.md)；引导与 GUI 顺序：[Workspace UI 产品流程 Agent Note](../../.agents/notes/archived/feature/2026-07-25-workspace-ui-product-flow.md)。
+工作区（workspace）是用户工作目录的持久记录：一个稳定 id、一组包含主要目录的规范授权路径、一个显示标题，以及会话的有序归属。该子系统是单个包（package）（[dsh-workspace](../../packages/workspace/workspace)，`ctx.workspaceRegistry`）——一项宿主侧可选能力，不属于 agent loop（智能体循环）主干，自身不添加工具或会话事件，沙箱策略会将其目录授权写入可回放的请求上下文。它通过[存储领域数据形式](storage.zh.md)存储自己的记录，并对照 [`SessionHeader.cwd`](persistence.zh.md#sessionheader--metadata-beside-the-log) 校验会话成员资格，因此 `storageDomain` 与 `sessionPersistence` 是必需的启动依赖：持久化这一依赖不可用时，插件保持 pending，而不是把这种不可用误当作空历史。设计记录：[领域 KV 存储 Agent Note（agent 决策记录）](../../.agents/notes/proposed/architecture/2026-07-24-domain-kv-storage-and-workspace.zh.md)；引导与 GUI 顺序：[Workspace UI 产品流程 Agent Note](../../.agents/notes/archived/feature/2026-07-25-workspace-ui-product-flow.md)。
 
 源码：[`packages/workspace/workspace/src/types.ts`](../../packages/workspace/workspace/src/types.ts)
 
@@ -24,22 +24,23 @@ type WorkspaceId = Branded<'WorkspaceId'>
 
 ```ts type-equiv
 /**
- * One workspace: a stable id over an existing directory, a display title, and
- * an ordered candidate account of sessions. Membership validates header cwd
- * against the workspace path, but preserves an existing account when its
- * fully qualified cwd is missing. Consumers only see this interface; the
- * implementation stays private.
+ * A stable workspace with authorized directories and ordered Session membership.
+ * Membership validates header cwd against recorded primary-directory identities,
+ * including former primaries; those historical identities grant no filesystem access.
+ * Missing fully qualified directories preserve existing membership.
  */
 interface Workspace {
   /** Stable record id (generated uuid). */
   readonly id: WorkspaceId
 
   /**
-   * Canonical directory path: the `fs.realpath` of the path given at create
-   * time (trailing slashes, `..`, and symlinks all resolved). Never rewritten
-   * afterwards, even when the directory disappears (see {@link status}).
+   * Canonical primary directory. New Sessions start here; changing it keeps
+   * existing Sessions and their recorded working directories.
    */
   readonly path: string
+
+  /** Canonical authorized directories, primary first. All follow the Session's sandbox mode. */
+  readonly directories: readonly string[]
 
   /** Display title. Defaults to the final path segment, or a filesystem root's own spelling; duplicates are allowed. */
   readonly title: string
@@ -55,7 +56,8 @@ interface Workspace {
    * prepended at attach, explicit reordering goes through
    * `insertSessionBefore`, and activity never reorders. The durable candidate
    * account is filtered synchronously: missing headers, invalid cwd values,
-   * and canonical cwd mismatches are never returned. A fully qualified cwd
+   * and cwd values outside the recorded primary-directory history are never
+   * returned. A fully qualified cwd
    * whose realpath or directory stat fails with ENOENT preserves an existing
    * candidate, including a dangling symlink; other filesystem failures do not.
    * A subsequent mutation prunes filtered candidates, not missing-directory
@@ -108,10 +110,8 @@ interface Workspace {
   detachSession(sessionId: SessionId): Promise<void>
 
   /**
-   * Live directory check, uncached: whether {@link path} currently exists and
-   * is a directory. A missing directory never mutates the record — the
-   * directory may only be temporarily moved.
-   * @returns `'ok'` when the directory exists, `'missing-dir'` otherwise.
+   * Check all authorized directories without caching or mutating the record.
+   * @returns `'ok'` when every directory exists, `'missing-dir'` otherwise.
    */
   status(): Promise<'ok' | 'missing-dir'>
 }
@@ -338,6 +338,13 @@ Host service backing the generated `ctx.remote.workspace` namespace.
 @Remote('rename') rename(request: WorkspaceRenameRequest): Promise<WorkspaceValue>
 
 /**
+ * Save the workspace title and directory grants. This action is separate from rename-only access.
+ * @param request - workspace identity, title, and authorized directories, primary first.
+ * @returns the updated workspace projection.
+ */
+@Remote('edit') edit(request: WorkspaceEditRequest): Promise<WorkspaceValue>
+
+/**
  * Remove one Workspace registration while retaining files and Sessions.
  * @param request - Workspace identity to remove.
  * @returns deletion confirmation.
@@ -503,6 +510,24 @@ initializeDefault(resolveDirectory: () => Promise<string>): Promise<Workspace | 
 get(id: WorkspaceId): Workspace | undefined
 
 /**
+ * Find a Session's workspace, inheriting it only through subagent ancestry.
+ * Directory edits temporarily reject policy resolution until their durable write settles.
+ * @param header - caller's immutable Session metadata.
+ * @returns the owning workspace, or undefined for an ungrouped Session.
+ */
+forSession(header: SessionHeader): Workspace | undefined
+
+/**
+ * Save a title and canonical authorized directories atomically. New Sessions use the first directory.
+ * Running work and persistent terminals must finish before the directory grants can change.
+ * @param id - workspace identity.
+ * @param title - validated display title.
+ * @param directories - authorized directories, primary first; omission preserves them.
+ * @returns the updated workspace after durability.
+ */
+update(id: WorkspaceId, title: string, directories?: readonly string[]): Promise<Workspace>
+
+/**
  * Synchronous workspace projection in durable registry order. Every
  * entity's `sessionIds` getter is already filtered by the startup/live
  * canonical-cwd header index; this method performs no persistence reads.
@@ -589,7 +614,7 @@ unpinSession(sessionId: SessionId): Promise<void>
 async resolveByPath(path: string): Promise<Workspace | undefined>
 ```
 
-Types: [SessionId](core.zh.md)
+Types: [SessionHeader](persistence.zh.md) · [SessionId](core.zh.md)
 
 Source: [`packages/workspace/workspace/src/index.ts`](../../packages/workspace/workspace/src/index.ts)
 

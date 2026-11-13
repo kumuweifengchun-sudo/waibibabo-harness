@@ -23,6 +23,10 @@ const sessionId = z.string().transform(value => brandString<SessionId>(value))
  */
 export const workspaceRecord = z.object({
   path: z.string(),
+  /** Authorized directories in display order; the first is the primary directory. */
+  directories: z.array(z.string()).min(1).optional(),
+  /** Former primary directories used only to validate existing Session ownership, never to grant access. */
+  membershipPaths: z.array(z.string()).optional(),
   title: z.string(),
   sessionIds: z.array(sessionId),
   createdAt: z.string(),

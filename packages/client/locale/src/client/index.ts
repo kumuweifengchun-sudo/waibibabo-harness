@@ -190,7 +190,7 @@ export class LocaleRuntime {
     for (const locale of BUILT_IN_LOCALES) this.catalog.set(localeKey(locale.id), locale)
     const locales = this.localeList()
     this.provisional = resolveInitialLocale(locales, bootstrap?.languages)
-    this.preference = bootstrap?.preference ?? undefined
+    this.preference = bootstrap?.fixedLocale ?? bootstrap?.preference ?? undefined
     this.snapshot = Object.freeze({ active: this.resolveActive(), locales, revision: 0 })
     if (host !== undefined) {
       ctx.effect(() => host.subscribe(() => { this.adopt(host) }), 'locale: settings scope adoption')
@@ -254,6 +254,10 @@ export class LocaleRuntime {
    * @param id - a registered locale id; unknown ids throw.
    */
   setLocale(id: string): void {
+    if (this.bootstrap?.fixedLocale !== undefined) {
+      if (localeKey(id) !== this.bootstrap.fixedLocale) throw new Error('locale: the native product fixes its language')
+      return
+    }
     const match = this.catalog.get(localeKey(id))
     if (match === undefined) throw new Error(`locale "${id}" is not registered`)
     this.preference = match.id
@@ -303,6 +307,7 @@ export class LocaleRuntime {
    * @param host - the constructor-narrowed scope driving this adoption.
    */
   private adopt(host: ConfigForm<LocaleSettings>): void {
+    if (this.bootstrap?.fixedLocale !== undefined) return
     const section = host.getSnapshot().value
     if (section === undefined) return
     this.preference = section.preference
@@ -328,7 +333,8 @@ export class LocaleRuntime {
 
   /** Snapshot the catalog in registration order. */
   private localeList(): readonly LocaleDefinition[] {
-    return Object.freeze([...this.catalog.values()])
+    return Object.freeze([...this.catalog.values()].filter(locale =>
+      this.bootstrap?.fixedLocale === undefined || locale.id === this.bootstrap.fixedLocale))
   }
 
   /** Fail a new definition whose complete fallback path does not reach English. */
@@ -610,6 +616,7 @@ export async function apply(ctx: ClientContext): Promise<void> {
   // (browser detection, or a stored preference adopted after activation), so
   // state it once at activation rather than waiting for the first change.
   sync()
+  if (bootstrap?.fixedLocale !== undefined) return
   const injected = (actions: BoundActions<typeof store>): LanguageRowInjected => {
     bound = actions
     // Re-sync from the getter so no event is lost between registration and

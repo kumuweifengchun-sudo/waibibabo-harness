@@ -6,6 +6,20 @@
 
 /** Simplified Chinese dictionary (the key-set source of truth). */
 export const zh = {
+  'workspace.edit': '编辑',
+  'workspace.editTitle': '编辑工作区',
+  'workspace.save': '保存',
+  'workspace.saving': '正在保存…',
+  'workspace.folders': '源文件夹',
+  'workspace.primary': '主要',
+  'workspace.setPrimary': '设为主要',
+  'workspace.primaryPath': '主要文件夹：{path}',
+  'workspace.setPrimaryPath': '设为主要文件夹：{path}',
+  'workspace.removeFolder': '移除',
+  'workspace.removeFolderPath': '移除文件夹：{path}',
+  'workspace.addFolder': '添加文件夹',
+  'workspace.foldersHint': '主要文件夹是新会话的默认工作目录，已有会话保留当前目录。所有列出的文件夹都遵循当前权限模式；选择“工作区内修改”时均可读写。移除仅取消目录授权，不删除文件。',
+
   'defaultWorkspace.failed': '无法创建默认工作区，请通过“选择工作区”选择文件夹',
   'draft.workspaceRequired': '请先选择工作区',
   'draft.initializationFailed': '暂时无法填入草稿，请稍后重试',
@@ -132,6 +146,20 @@ export type WorkspaceKey = keyof typeof zh
 
 /** English dictionary, checked complete against the zh key set. */
 export const en = {
+  'workspace.edit': 'Edit',
+  'workspace.editTitle': 'Edit workspace',
+  'workspace.save': 'Save',
+  'workspace.saving': 'Saving…',
+  'workspace.folders': 'Source folders',
+  'workspace.primary': 'Primary',
+  'workspace.setPrimary': 'Set primary',
+  'workspace.primaryPath': 'Primary folder: {path}',
+  'workspace.setPrimaryPath': 'Set primary folder: {path}',
+  'workspace.removeFolder': 'Remove',
+  'workspace.removeFolderPath': 'Remove folder: {path}',
+  'workspace.addFolder': 'Add folder',
+  'workspace.foldersHint': 'New sessions start in the primary folder; existing sessions keep their current directory. All listed folders follow the session permission mode and are writable in workspace-write mode. Removing a folder revokes its grant without deleting files.',
+
   'defaultWorkspace.failed': 'Unable to create default workspace. Use Choose workspace to select a folder.',
   'draft.workspaceRequired': 'Choose a workspace first.',
   'draft.initializationFailed': 'Could not fill the draft. Please try again shortly.',
@@ -255,6 +283,20 @@ export const en = {
 
 /** Japanese copy, checked against the English keys. */
 export const ja = {
+  'workspace.edit': 'Edit',
+  'workspace.editTitle': 'Edit workspace',
+  'workspace.save': 'Save',
+  'workspace.saving': 'Saving…',
+  'workspace.folders': 'Source folders',
+  'workspace.primary': 'Primary',
+  'workspace.setPrimary': 'Set primary',
+  'workspace.primaryPath': 'Primary folder: {path}',
+  'workspace.setPrimaryPath': 'Set primary folder: {path}',
+  'workspace.removeFolder': 'Remove',
+  'workspace.removeFolderPath': 'Remove folder: {path}',
+  'workspace.addFolder': 'Add folder',
+  'workspace.foldersHint': 'New sessions start in the primary folder; existing sessions keep their current directory. All listed folders follow the session permission mode and are writable in workspace-write mode. Removing a folder revokes its grant without deleting files.',
+
   'defaultWorkspace.failed': 'デフォルトのワークスペースを作成できません。ワークスペースを選択してフォルダーを選んでください。',
   'draft.workspaceRequired': '先にワークスペースを選択してください。',
   'draft.initializationFailed': '下書きを埋め込めませんでした。しばらくしてからもう一度お試しください。',
@@ -378,6 +420,20 @@ export const ja = {
 
 /** Spanish dictionary, checked against the English keys. */
 export const es = {
+  'workspace.edit': 'Edit',
+  'workspace.editTitle': 'Edit workspace',
+  'workspace.save': 'Save',
+  'workspace.saving': 'Saving…',
+  'workspace.folders': 'Source folders',
+  'workspace.primary': 'Primary',
+  'workspace.setPrimary': 'Set primary',
+  'workspace.primaryPath': 'Primary folder: {path}',
+  'workspace.setPrimaryPath': 'Set primary folder: {path}',
+  'workspace.removeFolder': 'Remove',
+  'workspace.removeFolderPath': 'Remove folder: {path}',
+  'workspace.addFolder': 'Add folder',
+  'workspace.foldersHint': 'New sessions start in the primary folder; existing sessions keep their current directory. All listed folders follow the session permission mode and are writable in workspace-write mode. Removing a folder revokes its grant without deleting files.',
+
   'defaultWorkspace.failed': 'No se puede crear el espacio de trabajo predeterminado. Utilice Elegir espacio de trabajo para seleccionar una carpeta.',
   'draft.workspaceRequired': 'Elija un espacio de trabajo primero.',
   'draft.initializationFailed': 'No se pudo completar el borrador. Inténtelo de nuevo en breve.',
@@ -501,6 +557,20 @@ export const es = {
 
 /** French dictionary, checked against the English keys. */
 export const fr = {
+  'workspace.edit': 'Edit',
+  'workspace.editTitle': 'Edit workspace',
+  'workspace.save': 'Save',
+  'workspace.saving': 'Saving…',
+  'workspace.folders': 'Source folders',
+  'workspace.primary': 'Primary',
+  'workspace.setPrimary': 'Set primary',
+  'workspace.primaryPath': 'Primary folder: {path}',
+  'workspace.setPrimaryPath': 'Set primary folder: {path}',
+  'workspace.removeFolder': 'Remove',
+  'workspace.removeFolderPath': 'Remove folder: {path}',
+  'workspace.addFolder': 'Add folder',
+  'workspace.foldersHint': 'New sessions start in the primary folder; existing sessions keep their current directory. All listed folders follow the session permission mode and are writable in workspace-write mode. Removing a folder revokes its grant without deleting files.',
+
   'defaultWorkspace.failed': 'Impossible de créer un espace de travail par défaut. Utilisez Choisir un espace de travail pour sélectionner un dossier.',
   'draft.workspaceRequired': "Choisissez d'abord un espace de travail.",
   'draft.initializationFailed': 'Impossible de remplir le projet. Veuillez réessayer sous peu.',
@@ -624,6 +694,20 @@ export const fr = {
 
 /** German dictionary, checked against the English keys. */
 export const de = {
+  'workspace.edit': 'Edit',
+  'workspace.editTitle': 'Edit workspace',
+  'workspace.save': 'Save',
+  'workspace.saving': 'Saving…',
+  'workspace.folders': 'Source folders',
+  'workspace.primary': 'Primary',
+  'workspace.setPrimary': 'Set primary',
+  'workspace.primaryPath': 'Primary folder: {path}',
+  'workspace.setPrimaryPath': 'Set primary folder: {path}',
+  'workspace.removeFolder': 'Remove',
+  'workspace.removeFolderPath': 'Remove folder: {path}',
+  'workspace.addFolder': 'Add folder',
+  'workspace.foldersHint': 'New sessions start in the primary folder; existing sessions keep their current directory. All listed folders follow the session permission mode and are writable in workspace-write mode. Removing a folder revokes its grant without deleting files.',
+
   'defaultWorkspace.failed': 'Der Standardarbeitsbereich kann nicht erstellt werden. Verwenden Sie „Arbeitsbereich auswählen“, um einen Ordner auszuwählen.',
   'draft.workspaceRequired': 'Wählen Sie zunächst einen Arbeitsbereich.',
   'draft.initializationFailed': 'Der Entwurf konnte nicht ausgefüllt werden. Bitte versuchen Sie es in Kürze noch einmal.',
@@ -747,6 +831,20 @@ export const de = {
 
 /** Russian dictionary, checked against the English keys. */
 export const ru = {
+  'workspace.edit': 'Edit',
+  'workspace.editTitle': 'Edit workspace',
+  'workspace.save': 'Save',
+  'workspace.saving': 'Saving…',
+  'workspace.folders': 'Source folders',
+  'workspace.primary': 'Primary',
+  'workspace.setPrimary': 'Set primary',
+  'workspace.primaryPath': 'Primary folder: {path}',
+  'workspace.setPrimaryPath': 'Set primary folder: {path}',
+  'workspace.removeFolder': 'Remove',
+  'workspace.removeFolderPath': 'Remove folder: {path}',
+  'workspace.addFolder': 'Add folder',
+  'workspace.foldersHint': 'New sessions start in the primary folder; existing sessions keep their current directory. All listed folders follow the session permission mode and are writable in workspace-write mode. Removing a folder revokes its grant without deleting files.',
+
   'defaultWorkspace.failed': 'Невозможно создать рабочую область по умолчанию. Используйте «Выбрать рабочее пространство», чтобы выбрать папку.',
   'draft.workspaceRequired': 'Сначала выберите рабочее место.',
   'draft.initializationFailed': 'Не удалось заполнить черновик. Пожалуйста, повторите попытку в ближайшее время.',
@@ -870,6 +968,20 @@ export const ru = {
 
 /** Portuguese dictionary, checked against the English keys. */
 export const pt = {
+  'workspace.edit': 'Edit',
+  'workspace.editTitle': 'Edit workspace',
+  'workspace.save': 'Save',
+  'workspace.saving': 'Saving…',
+  'workspace.folders': 'Source folders',
+  'workspace.primary': 'Primary',
+  'workspace.setPrimary': 'Set primary',
+  'workspace.primaryPath': 'Primary folder: {path}',
+  'workspace.setPrimaryPath': 'Set primary folder: {path}',
+  'workspace.removeFolder': 'Remove',
+  'workspace.removeFolderPath': 'Remove folder: {path}',
+  'workspace.addFolder': 'Add folder',
+  'workspace.foldersHint': 'New sessions start in the primary folder; existing sessions keep their current directory. All listed folders follow the session permission mode and are writable in workspace-write mode. Removing a folder revokes its grant without deleting files.',
+
   'defaultWorkspace.failed': 'Não foi possível criar o espaço de trabalho padrão. Use Escolher espaço de trabalho para selecionar uma pasta.',
   'draft.workspaceRequired': 'Escolha um espaço de trabalho primeiro.',
   'draft.initializationFailed': 'Não foi possível preencher o rascunho. Por favor, tente novamente em breve.',

@@ -19,12 +19,21 @@
       "default": "./lib/index.js"
     },
     "./src/*": "./src/*",
+    "./config": {
+      "types": "./lib/types/config.d.ts",
+      "default": "./lib/types/config.js"
+    },
+    "./auth": {
+      "types": "./lib/types/auth.d.ts",
+      "default": "./lib/types/auth.js"
+    },
     "./package.json": "./package.json",
     "./locale/*.json": "./locale/*.json"
   },
   "files": [
     "locale/*.json",
     "lib/index.js",
+    "lib/types/**/*.js",
     "lib/types/**/*.d.ts"
   ],
   "license": "MIT",

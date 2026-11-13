@@ -5,6 +5,7 @@ import { detailPath } from '../packages/util/plugin-detail/src/document.ts'
 import { PRODUCT_PACKAGE_POLICY } from './product-package-policy.ts'
 import { SHIPPED_LOCALE_IDS, localeTokens, hasInvisibleLocaleCharacters } from './shipped-locales.ts'
 import { collectConfigCatalog } from './gen-config-catalog.ts'
+import { CHINESE_PRODUCT_PACKAGES } from './product-chinese-docs.ts'
 
 /** Flatten metadata strings and reject values that cannot be translated. */
 function strings(value: unknown, key = ''): Record<string, string> {
@@ -48,8 +49,13 @@ export function localeMetadataProblems(root: string): string[] {
       }
       const en = read('en')
       const zh = existsSync(join(root, directory, 'zh.json')) ? read('zh') : {}
+      const chineseProduct = CHINESE_PRODUCT_PACKAGES.some(pkg => directory === pkg + '/locale')
       const description = en['meta.description']
-      if (description !== undefined && !/[.!?]$/u.test(description)) problems.push(`${directory}/en.json: meta.description must end with sentence punctuation`)
+      if (description !== undefined && !(chineseProduct ? /[。！？]$/u : /[.!?]$/u).test(description)) problems.push(`${directory}/en.json: meta.description must end with sentence punctuation`)
+      if (chineseProduct) {
+        if (JSON.stringify(en) !== JSON.stringify(zh)) problems.push(`${directory}: the metadata fallback must use the Chinese product copy`)
+        continue
+      }
       const expected = { ...zh, ...en }
       for (const language of SHIPPED_LOCALE_IDS.filter(id => id !== 'en' && id !== 'zh')) {
         const translated = read(language)

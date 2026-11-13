@@ -259,7 +259,13 @@ function mergeAndApply(
   )
   const freedNew = api.localFree(newAcl)
   const freedLabel = labelEdit.kind === 'apply' ? api.localFree(labelEdit.acl) : null
-  if (applyResult !== abi.ERROR_SUCCESS) throwWin32(api, 'SetNamedSecurityInfoW', applyResult, `${label}(${path})`)
+  if (applyResult !== abi.ERROR_SUCCESS) {
+    const permissionHint = applyResult === 5 && label === 'grantWrite'
+      ? '；Windows 拒绝配置工作区沙箱权限。目录需要修改访问规则（WRITE_DAC）与完整性标签（WRITE_OWNER）的权限，仅文件写入权限不足。'
+        + '请检查目录“属性 → 安全”，或使用当前账号拥有完全控制权限的工作区。本次命令尚未启动，沙箱保护仍保持启用。'
+      : ''
+    throwWin32(api, 'SetNamedSecurityInfoW', applyResult, `${label}(${path})${permissionHint}`)
+  }
   if (freedDescriptor !== null && !isNullPtr(freedDescriptor)) throwLastError(api, 'LocalFree', `${label}(${path}) descriptor`)
   if (!isNullPtr(freedNew)) throwLastError(api, 'LocalFree', `${label}(${path}) new ACL`)
   if (freedLabel !== null && !isNullPtr(freedLabel)) throwLastError(api, 'LocalFree', `${label}(${path}) label ACL`)

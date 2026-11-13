@@ -60,22 +60,23 @@ export interface SessionActivity {
 }
 
 /**
- * One workspace: a stable id over an existing directory, a display title, and
- * an ordered candidate account of sessions. Membership validates header cwd
- * against the workspace path, but preserves an existing account when its
- * fully qualified cwd is missing. Consumers only see this interface; the
- * implementation stays private.
+ * A stable workspace with authorized directories and ordered Session membership.
+ * Membership validates header cwd against recorded primary-directory identities,
+ * including former primaries; those historical identities grant no filesystem access.
+ * Missing fully qualified directories preserve existing membership.
  */
 export interface Workspace {
   /** Stable record id (generated uuid). */
   readonly id: WorkspaceId
 
   /**
-   * Canonical directory path: the `fs.realpath` of the path given at create
-   * time (trailing slashes, `..`, and symlinks all resolved). Never rewritten
-   * afterwards, even when the directory disappears (see {@link status}).
+   * Canonical primary directory. New Sessions start here; changing it keeps
+   * existing Sessions and their recorded working directories.
    */
   readonly path: string
+
+  /** Canonical authorized directories, primary first. All follow the Session's sandbox mode. */
+  readonly directories: readonly string[]
 
   /** Display title. Defaults to the final path segment, or a filesystem root's own spelling; duplicates are allowed. */
   readonly title: string
@@ -91,7 +92,8 @@ export interface Workspace {
    * prepended at attach, explicit reordering goes through
    * `insertSessionBefore`, and activity never reorders. The durable candidate
    * account is filtered synchronously: missing headers, invalid cwd values,
-   * and canonical cwd mismatches are never returned. A fully qualified cwd
+   * and cwd values outside the recorded primary-directory history are never
+   * returned. A fully qualified cwd
    * whose realpath or directory stat fails with ENOENT preserves an existing
    * candidate, including a dangling symlink; other filesystem failures do not.
    * A subsequent mutation prunes filtered candidates, not missing-directory
@@ -144,10 +146,8 @@ export interface Workspace {
   detachSession(sessionId: SessionId): Promise<void>
 
   /**
-   * Live directory check, uncached: whether {@link path} currently exists and
-   * is a directory. A missing directory never mutates the record — the
-   * directory may only be temporarily moved.
-   * @returns `'ok'` when the directory exists, `'missing-dir'` otherwise.
+   * Check all authorized directories without caching or mutating the record.
+   * @returns `'ok'` when every directory exists, `'missing-dir'` otherwise.
    */
   status(): Promise<'ok' | 'missing-dir'>
 }

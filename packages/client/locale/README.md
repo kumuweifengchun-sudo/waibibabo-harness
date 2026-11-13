@@ -25,6 +25,8 @@ Use `dsh-client-locale` to switch the web GUI between the shipped English, Chine
 <a id="use-this-package"></a>
 ## Use this package
 
+Native shells may supply `fixedLocale` (`zh` or `en`) through the locale bootstrap. A fixed product language takes precedence over browser and stored preferences, hides the Language row, and rejects attempts to select another language without writing preferences. The ordinary Web profile retains language selection.
+
 Use it wherever the web GUI needs a language switch or translated copy: the shipped settings row covers users, and plugin authors register their own dictionaries. Nothing needs configuration to mount — the package activates with the client tree.
 
 ### Choosing a language

@@ -235,6 +235,7 @@ describe('share reader access policy', () => {
     expect(decide('workspace/follow', workspace('private-ws'))).toEqual(deny('liveshare/read-only'))
     expect(decide('workspace/follow', workspace('missing-ws'))).toEqual(deny('liveshare/read-only'))
     expect(decide('workspace/rename', workspace('shared-ws'))).toEqual(deny('liveshare/read-only'))
+    expect(decide('workspace/edit', workspace('shared-ws'))).toEqual(deny('liveshare/read-only'))
   })
 
   it('allows forking the shared Session and the reader’s own active fork while the share’s switch is on', async () => {

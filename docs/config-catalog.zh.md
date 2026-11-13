@@ -345,7 +345,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-api-workspace-controller`
 
 - `inject`: `remoteAccess` · `typert` · `workspaceRegistry`
-- `source`: [`packages/api/workspace-controller/src/index.ts:37`](../packages/api/workspace-controller/src/index.ts)
+- `source`: [`packages/api/workspace-controller/src/index.ts:38`](../packages/api/workspace-controller/src/index.ts)
 
 ```ts config-catalog
 /** First-use directory policy for the Host account. */
@@ -750,7 +750,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-compaction-basic`
 
 - `inject`: `llm` · `tokenMeter` · `sessions`
-- `source`: [`packages/compaction/compaction-basic/src/types.ts:46`](../packages/compaction/compaction-basic/src/types.ts)
+- `source`: [`packages/compaction/compaction-basic/src/types.ts:48`](../packages/compaction/compaction-basic/src/types.ts)
 
 ```ts config-catalog
 /** Basic compaction configuration with an optional exact-target policy table. */
@@ -763,6 +763,8 @@ export interface BasicCompactionConfig extends CompactionPolicyConfig {
 
 /** Policy fields shared by the default policy and exact model overrides. */
 export interface CompactionPolicyConfig {
+  /** Scale default headroom and summary output to model budgets; defaults true unless headroom or summary maxTokens is explicit. */
+  adaptiveBudget?: boolean
   /** Window fraction for pressure; capped at context window minus reserved output and `headroomTokens`. Defaults to `0.8`. */
   thresholdRatio?: number
   /** Additional pressure headroom beyond the routed output reservation. Non-negative integer; defaults to `65536`. */
@@ -1974,7 +1976,7 @@ export interface PiAiProviderProfile {
   /** Name shown by configuration surfaces; defaults to the route key. */
   displayName?: string
   /**
-   * Wire protocol every model on this route speaks. Omission keeps each
+   * Default wire protocol for models without an explicit model-level api. Omission keeps each
    * installed catalog model's own protocol, which is why a catalog route needs
    * no protocol at all; a route the catalog does not ship must name one.
    */
@@ -2079,6 +2081,10 @@ export interface PiAiModelProfile {
   id: string
   /** Display name for selectors; defaults to the catalog name, then the id. */
   name?: string
+  /** Wire protocol for this model, overriding the route default. Explicit overrides use the configured-protocol factories. */
+  api?: string
+  /** Versioned endpoint for this model, overriding the route endpoint. */
+  baseURL?: string
   /** Maximum combined request and response context in tokens. */
   contextWindow?: number
   /**
@@ -2964,7 +2970,7 @@ export interface Config {
 
 - `inject`: `sessionProjections`
 - `refs`: [`SandboxMode`](subsystems/sandbox.zh.md)
-- `source`: [`packages/sandbox/sandbox-policy/src/index.ts:94`](../packages/sandbox/sandbox-policy/src/index.ts)
+- `source`: [`packages/sandbox/sandbox-policy/src/index.ts:95`](../packages/sandbox/sandbox-policy/src/index.ts)
 
 ```ts config-catalog
 /**
@@ -2979,7 +2985,8 @@ export interface Config {
   mode?: SandboxMode
   /**
    * Absolute fallback root for agentless calls and sessions without a cwd (default:
-   * `process.cwd()`). Normal agent calls use their session cwd instead.
+   * `process.cwd()`). Registered workspaces supply their current primary directory;
+   * ungrouped Sessions use their original cwd.
    */
   workspaceRoot?: string
   /**
@@ -3621,6 +3628,67 @@ export type JournalMode = 'wal' | 'delete' | 'truncate' | 'persist'
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-storage-sqlite -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-sub2api-account -->
+<a id="deepseek-aidsh-sub2api-account"></a>
+
+## `@deepseek-ai/dsh-sub2api-account`
+
+- `inject`: `credentials` · `webServer` · `llm`
+- `source`: [`packages/credentials/sub2api-account/src/config.ts:6`](../packages/credentials/sub2api-account/src/config.ts)
+
+```ts config-catalog
+/** Public deployment fields; credentials are stored separately on the Host. */
+export interface Config {
+  /** Platform HTTPS origin, without a path. */
+  platformOrigin: string
+  /** Additional trusted account API origins serving the same OAuth resource. */
+  accountOrigins?: string[]
+  /** Deadline for account metadata and inference model-list connection probes, in milliseconds. */
+  connectionProbeTimeoutMs?: number
+  /** Responses transport: prefer WebSocket with pre-submission HTTP fallback, or always use HTTP streaming. */
+  responsesTransport?: 'auto' | 'sse'
+  /** Idle lifetime of reusable Responses WebSocket connections, in milliseconds. */
+  responsesSocketIdleMs?: number
+  /** Maximum retained Responses connections; concurrent overflow requests use temporary connections. */
+  responsesSocketLimit?: number
+  /** Reprobe an unavailable Responses WebSocket endpoint after this interval, in milliseconds. */
+  responsesFallbackCooldownMs?: number
+  /** Product name shown in the account page and browser consent. */
+  productName: string
+  /** Permit plain HTTP only for numeric loopback development origins. */
+  allowLoopbackHttp?: boolean
+  /** Bound each platform request, in milliseconds. */
+  requestTimeoutMs?: number
+  /** Refresh the signed-in account balance at this interval, in milliseconds. */
+  accountRefreshIntervalMs?: number
+  /** Bound a user-triggered image generation request. */
+  imageTimeoutMs?: number
+  /** Bound invoice evidence uploads and downloads. */
+  invoiceTimeoutMs?: number
+  /** Maximum image gateway JSON body, including base64 output. */
+  imageResponseLimitBytes?: number
+  /** Absolute duration of a sign-in attempt, in milliseconds. */
+  attemptTimeoutMs?: number
+  /** Refresh access tokens and inference leases before this remaining lifetime. */
+  refreshLeewayMs?: number
+  /** Default selection before a per-model user override; auto follows model family and advertised endpoints. */
+  protocol?: ModelProtocolChoice
+  /** Default total token budget for every platform model. */
+  defaultContextWindow?: number
+  /** Default input capacity; omitted values use context minus the reserved output. */
+  defaultMaxInputTokens?: number
+  /** Default request output cap, including reasoning tokens counted by the selected protocol. */
+  defaultMaxTokens?: number
+}
+
+/** A user override or automatic model-specific selection. */
+export type ModelProtocolChoice = 'auto' | ModelProtocol
+
+/** Inference wire protocols implemented by the bundled adapter. */
+export type ModelProtocol = 'openai-completions' | 'openai-responses' | 'anthropic-messages' | 'google-generative-ai'
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-sub2api-account -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-subagent -->
 <a id="deepseek-aidsh-subagent"></a>
 
@@ -3849,8 +3917,10 @@ export interface Config {
 ```ts config-catalog
 /** Plugin config: the deployment-authored fragment of the system prompt (see {@link Config.personaPrefix} for its contract). */
 export interface Config {
-  /** Include the fixed DeepSeek Harness identity before the deployment persona (default true). */
+  /** Include the configured harness identity before the deployment persona (default true). */
   includeHarnessIdentity?: boolean
+  /** Model-facing product identity, separate from scoped deployment persona prefixes. */
+  harnessIdentity?: string
   /** Include optional runtime-context snapshots in model history (default true); required context remains. */
   includeRuntimeContext?: boolean
   /**
@@ -5011,6 +5081,7 @@ export interface Config {
 | `@deepseek-ai/dsh-tool-working-directory` | `tools` · `workingDirectory` | [`packages/session/tool-working-directory/src/index.ts`](../packages/session/tool-working-directory/src/index.ts) |
 | `@deepseek-ai/dsh-tools` | `systemPrompt` | [`packages/core/tools/src/index.ts`](../packages/core/tools/src/index.ts) |
 | `@deepseek-ai/dsh-user-questions` | — | [`packages/interaction/user-questions/src/index.ts`](../packages/interaction/user-questions/src/index.ts) |
+| `@deepseek-ai/dsh-waibibabo` | — | [`packages/bundle/waibibabo/src/index.ts`](../packages/bundle/waibibabo/src/index.ts) |
 | `@deepseek-ai/dsh-webhook` | `agents` · `agentDefaultModel` · `agentPresets` · `permissionPresets` · `sessionTitle` · `workspaceRegistry` | [`packages/experimental/webhook/src/index.ts`](../packages/experimental/webhook/src/index.ts) |
 | `@deepseek-ai/dsh-workspace` | `storageDomain` · `sessionPersistence` | [`packages/workspace/workspace/src/index.ts`](../packages/workspace/workspace/src/index.ts) |
 <!-- END GENERATED config-catalog:no-config -->

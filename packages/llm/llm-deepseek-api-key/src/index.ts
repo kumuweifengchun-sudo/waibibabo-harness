@@ -1,6 +1,7 @@
 /** API-key authentication, credential-gated discovery, and the official model listing for the official DeepSeek route. */
 import type { Context } from '@deepseek-ai/cordis'
-import { APP_IDENTITY, LlmError } from '@deepseek-ai/dsh-llm'
+import { LlmError } from '@deepseek-ai/dsh-llm'
+import { createRequire } from 'node:module'
 import type { LlmModelBadge } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/cordis-plugin-loader'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
@@ -18,6 +19,7 @@ export const name = 'llm-deepseek-api-key'
 export const inject = ['llm']
 
 const PROVIDER = 'deepseek-official'
+const { version: clientVersion } = createRequire(import.meta.url)('../package.json') as { version: string }
 /** Console tag of listing diagnostics; product profiles mount no console exporter for `ctx.logger`. */
 const LOG_TAG = '[llm-deepseek-api-key]'
 
@@ -66,7 +68,7 @@ export function apply(ctx: Context, config: Config): void {
       supported: connection.models,
       overrides: {},
       routeMaxTokens: connection.maxTokens,
-      clientVersion: APP_IDENTITY.version,
+      clientVersion,
     })
     if (view.listing !== reportedListing) {
       reportedListing = view.listing

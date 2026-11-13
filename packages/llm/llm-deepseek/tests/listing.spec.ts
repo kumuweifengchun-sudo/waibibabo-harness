@@ -62,12 +62,12 @@ describe('parseModelListing', () => {
   it.each([
     [undefined, { kind: 'none' }],
     [{ other: { min_version: '9.0.0' } }, { kind: 'none' }],
-    [{ [APP_IDENTITY.product]: {} }, { kind: 'none' }],
-    [{ [APP_IDENTITY.product]: { min_version: '0.2.0-alpha.1' } }, { kind: 'min-version', version: '0.2.0-alpha.1' }],
+    [{ 'deepseek-harness': {} }, { kind: 'none' }],
+    [{ 'deepseek-harness': { min_version: '0.2.0-alpha.1' } }, { kind: 'min-version', version: '0.2.0-alpha.1' }],
     ['0.2.0', { kind: 'invalid' }],
-    [{ [APP_IDENTITY.product]: '0.2.0' }, { kind: 'invalid' }],
-    [{ [APP_IDENTITY.product]: { min_version: 2 } }, { kind: 'invalid' }],
-    [{ [APP_IDENTITY.product]: { min_version: '' } }, { kind: 'invalid' }],
+    [{ 'deepseek-harness': '0.2.0' }, { kind: 'invalid' }],
+    [{ 'deepseek-harness': { min_version: 2 } }, { kind: 'invalid' }],
+    [{ 'deepseek-harness': { min_version: '' } }, { kind: 'invalid' }],
   ])('reads client requirements %j', (requirements, expected) => {
     expect(only({ ...MESSAGES, ...requirements === undefined ? {} : { client_requirements: requirements } })?.requirement).toEqual(expected)
   })
@@ -110,8 +110,8 @@ describe('parseModelListing', () => {
       .toEqual({ usable: true, facts: { inputModalities: ['text'] } })
   })
 
-  const OWN = `client_metadata["${APP_IDENTITY.product}"]`
-  const showing = (badge: unknown) => ({ ...MESSAGES, client_metadata: { [APP_IDENTITY.product]: { badge } } })
+  const OWN = 'client_metadata["deepseek-harness"]'
+  const showing = (badge: unknown) => ({ ...MESSAGES, client_metadata: { 'deepseek-harness': { badge } } })
   const longest = '十'.repeat(MAX_BADGE_TEXT_LENGTH)
   it.each([
     [{ text: '1017', tone: 'info' }, { text: '1017', tone: 'info' }],
@@ -133,25 +133,25 @@ describe('parseModelListing', () => {
     null,
     {},
     { other: { badge: { text: '1017' } } },
-    { [APP_IDENTITY.product]: null },
-    { [APP_IDENTITY.product]: { other_field: 1 } },
-    { [APP_IDENTITY.product]: { badge: null } },
+    { 'deepseek-harness': null },
+    { 'deepseek-harness': { other_field: 1 } },
+    { 'deepseek-harness': { badge: null } },
   ])('declares no badge for client_metadata %j', (metadata) => {
     expect(only({ ...MESSAGES, client_metadata: metadata })).not.toHaveProperty('badge')
   })
 
   it('reads badges only from client_metadata', () => {
     const badge = { text: '1017' }
-    expect(only({ ...MESSAGES, badge, client_requirements: { [APP_IDENTITY.product]: { badge } } })).not.toHaveProperty('badge')
+    expect(only({ ...MESSAGES, badge, client_requirements: { 'deepseek-harness': { badge } } })).not.toHaveProperty('badge')
   })
 
   it.each([
     ['1017', 'client_metadata is not an object'],
     [['1017'], 'client_metadata is not an object'],
-    [{ [APP_IDENTITY.product]: '1017' }, `${OWN} is not an object`],
-    [{ [APP_IDENTITY.product]: [] }, `${OWN} is not an object`],
-    [{ [APP_IDENTITY.product]: { badge: '1017' } }, `${OWN}.badge is not an object`],
-    [{ [APP_IDENTITY.product]: { badge: ['1017'] } }, `${OWN}.badge is not an object`],
+    [{ 'deepseek-harness': '1017' }, `${OWN} is not an object`],
+    [{ 'deepseek-harness': [] }, `${OWN} is not an object`],
+    [{ 'deepseek-harness': { badge: '1017' } }, `${OWN}.badge is not an object`],
+    [{ 'deepseek-harness': { badge: ['1017'] } }, `${OWN}.badge is not an object`],
   ])('rejects client_metadata %j without hiding the entry', (metadata, reason) => {
     const entry = only({ ...MESSAGES, client_metadata: metadata })
     expect(entry?.badge).toEqual({ kind: 'invalid', reason })
@@ -188,7 +188,7 @@ describe('parseModelListing', () => {
 
   it('rejects an own "__proto__" translation key', () => {
     const body: unknown = JSON.parse(
-      `{"data":[{"id":"m","client_metadata":{"${APP_IDENTITY.product}":{"badge":{"text":{"en":"New","__proto__":"x"}}}}}]}`,
+      '{"data":[{"id":"m","client_metadata":{"deepseek-harness":{"badge":{"text":{"en":"New","__proto__":"x"}}}}}]}',
     )
     expect(parseModelListing(body).entries[0]?.badge).toEqual({ kind: 'invalid', reason: unreadableText })
   })

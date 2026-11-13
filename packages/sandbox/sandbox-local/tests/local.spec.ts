@@ -430,16 +430,22 @@ describe('the default seatbelt probe (sandbox-exec contract)', () => {
 })
 
 describe('the windows-acl probe (runner invocation contract)', () => {
-  it('refuses unsupported extra grants before a Windows runner or ACL mutation', async () => {
+  it('passes physical extra roots to Windows runners and ignores them in read-only mode', async () => {
+    const extra = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-extra-root-')))
+    tempDirs.push(extra)
     const { ctx, sandbox } = await setup({}, {
       chain: ['windows-acl'],
       probeWindowsAcl: () => true,
       windowsAclRunnerArgs: ['node', 'windows-acl-runner.js'],
     })
     try {
-      await expect(sandbox.confine(['true'], { ...WW, additionalWritableRoots: ['/extra'] }))
-        .rejects.toThrow('Windows ACL confinement does not support additional writable directories')
-      await expect(sandbox.confine(['true'], { ...RO, additionalWritableRoots: ['/extra'] })).resolves.toBeDefined()
+      const allowed = await sandbox.confine(['true'], { ...WW, additionalWritableRoots: [extra] })
+      expect(allowed.argv).toContain('--writable-root')
+      expect(allowed.argv[allowed.argv.indexOf('--writable-root') + 1]).toBe(extra)
+      const readOnly = await sandbox.confine(['true'], { ...RO, additionalWritableRoots: [join(extra, 'missing')] })
+      expect(readOnly.argv).not.toContain('--writable-root')
+      await expect(sandbox.confine(['true'], { ...WW, additionalWritableRoots: [join(extra, 'missing')] }))
+        .rejects.toMatchObject({ code: 'SANDBOX_INVALID_ROOT' })
     } finally {
       await ctx.fiber.dispose()
     }

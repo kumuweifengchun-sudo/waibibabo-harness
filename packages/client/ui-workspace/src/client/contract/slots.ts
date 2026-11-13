@@ -287,7 +287,7 @@ export type WorkspaceBrowserInjected = {
   /** Tell the user an archived row cannot be opened (a click on it). */
   notifyArchivedNotOpenable: () => void
   /** Rename a Host Workspace (rejects on name conflict; resolves on durability). */
-  renameWorkspace: (workspaceId: WorkspaceId, title: string) => Promise<void>
+  renameWorkspace: (workspaceId: WorkspaceId, title: string, directories?: readonly string[]) => Promise<void>
   /** Delete only a Host Workspace registration; directory and Session logs remain. */
   deleteWorkspace: (workspaceId: WorkspaceId) => Promise<void>
   /**

@@ -8,7 +8,7 @@ export const zh = {
   missingFontsDescription: '本次预览无法使用以下字体，预览中的文字和排版可能与原文档不同。',
   missingFontsCount: '{count} 种字体',
   closeDetails: '关闭字体详情',
-  unavailable: 'Office 预览不可用。请在运行 DeepSeek Harness 的主机上启用文档预览服务。',
+  unavailable: 'Office 预览不可用。请在运行 WSS 的主机上启用文档预览服务。',
   invalid: '无法预览此 Office 文件。文件可能已损坏、受密码保护，或与扩展名不符。',
   tooLarge: 'Office 文件或转换后的 PDF 超过预览大小上限，请缩小文件或调整预览配置。',
   failed: 'Office 转换失败，未生成可用的 PDF。请检查该文件后重试。',

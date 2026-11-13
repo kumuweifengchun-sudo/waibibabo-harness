@@ -254,11 +254,12 @@ describe('Session fork failures', () => {
     await creation.fiber.dispose()
   })
 
-  it('omits absent cwd and preset metadata before reporting Workspace attachment failure', async () => {
+  it('uses the workspace primary directory and omits absent preset metadata before attachment failure', async () => {
     const ctx = await baseContext()
     const source = completedSession(ctx, 'workspace-source')
     const workspace = {
       id: 'workspace-1' as WorkspaceId,
+      path: '/new-primary',
       sessionIds: [source.id],
       attachSession: () => Promise.reject(new Error('workspace write failed')),
     } as unknown as Workspace
@@ -271,7 +272,7 @@ describe('Session fork failures', () => {
     await expectFailure(controller.fork({ sessionId: source.id }), 'session/workspace-attach-failed')
     const options = create.mock.calls[0]?.[0]
     if (options === undefined) throw new Error('Agent creation was not attempted')
-    expect(options.meta).not.toHaveProperty('cwd')
+    expect(options.meta).toHaveProperty('cwd', '/new-primary')
     expect(options.meta).not.toHaveProperty('agentPreset')
     await ctx.fiber.dispose()
   })

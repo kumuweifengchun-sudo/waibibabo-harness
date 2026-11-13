@@ -226,6 +226,21 @@ describe('AclSandbox constructor validation', () => {
 })
 
 describe('AclSandbox init', () => {
+  it('includes detached additional capabilities in the token and rejects them in read-only mode', async () => {
+    const { createRestrictedToken, convertStringSidToSidW } = state.stubs as HappyStubs
+    const extra = ['S-1-4-9000-8']
+    const sandbox = new AclSandbox({ writableDirs: [scratch()], tempDir: null, mode: 'workspace-write',
+      writeSid: 'S-1-4-9000-7', additionalWriteSids: extra, manageDacls: false })
+    extra.push('S-1-4-9000-9')
+    try {
+      await sandbox.init()
+      expect(convertStringSidToSidW).toHaveBeenCalledWith('S-1-4-9000-8', expect.anything())
+      expect(convertStringSidToSidW).not.toHaveBeenCalledWith('S-1-4-9000-9', expect.anything())
+      expect(createRestrictedToken.mock.calls[0]?.[6]).toBe(4)
+    } finally { sandbox.dispose() }
+    expect(() => new AclSandbox({ writableDirs: [], mode: 'read-only', additionalWriteSids: extra })).toThrow('read-only does not accept write SIDs')
+  })
+
   it('completes the happy workspace-write pipeline: workspace and temp grants, restricted token, resolved temp dir', async () => {
     const { setNamedSecurityInfoW } = state.stubs as HappyStubs
     const workspace = scratch()

@@ -8,6 +8,12 @@ Source: [`packages/credentials/credentials/src/index.ts`](../../packages/credent
 
 ## Identity
 
+The desktop provider's `PlatformResult<T>` carries a display-safe value or an account failure category. `GatewayId`, `PaymentOrderId`, `SubscriptionPlanId`, `InvoiceId`, `InvoiceFileId`, `ImageOutputId`, and `InvoiceRequestKey` are distinct branded strings. `GatewayView` lists administrator-advertised inference origins and the saved selection; account requests keep the configured OAuth origin. `ImageRequest` selects an authorized group independently of the chat group, while `ImageResult` contains bounded image URLs or bytes. `CheckoutView`, `OrderRequest`, `PaymentLaunch`, `PaymentOrder`, `OrderPage`, and `SubscriptionView` describe platform-owned prices, payment targets, orders and current subscriptions. `InvoiceRequest` carries application fields, evidence, an edit version and a stable retry key; `InvoiceView`, `InvoicePage`, `InvoiceQuote`, and `PlatformFile` expose owned applications, amounts and validated attachments. `PlatformPageQuery` never accepts a user id. Mutation failures with unknown outcomes are not retried automatically.
+
+The [Sub2API account provider](../../packages/credentials/sub2api-account/README.md) owns desktop platform login and group-scoped inference leases. Its `Sub2apiGroupId` and `Sub2apiUserId` are branded string identifiers. Its display-safe `AccountView` carries login progress, account details, available groups, selected models, usage, and a localized failure category; tokens stay in the Host credential store.
+
+`ModelProtocolChoice` selects automatic routing or an explicit Responses, Messages, Chat Completions, or Gemini protocol for one group/model pair. `ModelLimits` supplies context, input and output budgets as account defaults or group/model overrides; absent overrides inherit the defaults. `UsageQuery` carries pagination, an inclusive local-date range of at most 90 days, timezone, model, group and stream filters; identity comes only from the stored grant. `UsageResult` returns display-safe records and server-calculated totals or a localized failure category; unavailable totals leave the records visible with a separate statistics error. The Host strips credentials and administrator fields, and the client drops retained records when the account changes. See the [account package](../../packages/credentials/sub2api-account/README.md) for persistence and endpoint requirements.
+
 A reference names one credential as a POSIX-style environment-variable name. The brand prevents callers from mixing credential references with other strings passed between packages or processes; construction validates the shell-identifier syntax.
 
 ```ts type-equiv
@@ -366,6 +372,198 @@ abstract getDeviceIdentity(): Promise<{ deviceId?: string; userId?: AccountUserI
 ```
 
 Source: [`packages/credentials/deepseek-account/src/index.ts`](../../packages/credentials/deepseek-account/src/index.ts)
+
+<a id="ctxsub2apiaccount--sub2apiaccount"></a>
+
+### `ctx.sub2apiAccount` — `Sub2apiAccount`
+
+Owns account credentials, browser attempts and the model routes they authorize.
+
+```ts cordis-catalog
+/** Save the device's account connection independently of model routes and login credentials.
+ * @param origin - A configured account origin, or null for automatic detection.
+ * @returns updated routing state; an unavailable manual selection stays saved for explicit repair.
+ */
+@Remote setAccountOrigin(origin: string | null): Promise<AccountView>
+
+/** Read account state and restore available models after a Host restart.
+ * @returns display-safe account state; query failures retain the stored login.
+ */
+@Remote getState(): Promise<AccountView>
+
+/** Refresh profile, allowed groups, account usage and the selected model catalog.
+ * @returns updated state, retaining previous details on transient failure.
+ */
+@Remote refresh(): Promise<AccountView>
+
+/** Select one server-authorized group; its credential never enters the client.
+ * @param groupId - group from the current account snapshot.
+ * @returns state after model discovery or its explicit failure.
+ */
+@Remote selectGroup(groupId: Sub2apiGroupId): Promise<AccountView>
+
+/** Set or remove the protocol override for a model in the current account's selected group.
+ * @param groupId - Group shown when the client rendered the control.
+ * @param model - Exact id from the current group's model catalog.
+ * @param protocol - Selected wire protocol, or auto to remove the override.
+ * @returns state after durable storage and model registration; already prepared requests keep their original protocol.
+ */
+@Remote setModelProtocol(groupId: Sub2apiGroupId, model: string, protocol: ModelProtocolChoice): Promise<AccountView>
+
+/** Save the allocation inherited by models without an override.
+ * @param limits - Context budget and disjoint input/output caps.
+ * @returns account state after persistence and model-registration refresh.
+ */
+@Remote setModelLimits(limits: ModelLimits): Promise<AccountView>
+
+/** Set an individual allocation or restore inheritance for one current-group model.
+ * @param groupId - Group shown when the client rendered the control.
+ * @param model - Exact model id from that group's catalog.
+ * @param limits - Explicit budgets, or null to inherit the account defaults.
+ * @returns account state after saving and refreshing model metadata.
+ */
+@Remote setModelLimitOverride(groupId: Sub2apiGroupId, model: string, limits: ModelLimits | null): Promise<AccountView>
+
+/** Read advertised inference addresses and routing choices, independently of the account connection.
+ * @param signal - Request cancellation.
+ * @returns available gateways and the saved selection.
+ */
+@Remote getGateways(signal?: AbortSignal): Promise<PlatformResult<GatewayView>>
+
+/** Save an administrator-advertised inference address for subsequent model and image requests.
+ * @param id - Address id from the latest platform list, or null to detect an inference route automatically.
+ * @param allowInsecure - Explicit acknowledgement that HTTP sends inference keys and prompts without encryption.
+ * @returns current addresses after durable selection and model refresh.
+ */
+@Remote setGateway(id: GatewayId | null, allowInsecure: boolean): Promise<PlatformResult<GatewayView>>
+
+/** List an image group's models independently of the conversation group.
+ * @param groupId - An image-enabled group belonging to the current account.
+ * @param signal - Client cancellation.
+ * @returns model ids advertised for this group's inference credential.
+ */
+@Remote getImageModels(groupId: Sub2apiGroupId, signal?: AbortSignal): Promise<PlatformResult<readonly string[]>>
+
+/** Generate images through one authorized group without changing the conversation model.
+ * @param input - Explicit user prompt and image options.
+ * @param signal - User cancellation; cancellation does not reverse possible upstream billing.
+ * @returns image previews or an explicit failure, with no automatic request replay.
+ */
+@Remote generateImages(input: ImageRequest, signal?: AbortSignal): Promise<PlatformResult<ImageResult>>
+
+/** Read native checkout prices, subscription plans and method availability.
+ * @param signal - Client cancellation.
+ * @returns platform checkout data without provider secrets.
+ */
+@Remote getCheckout(signal?: AbortSignal): Promise<PlatformResult<CheckoutView>>
+
+/** Read subscription status and remaining-period progress for the current account.
+ * @param signal - Client cancellation.
+ * @returns user-owned subscriptions.
+ */
+@Remote getSubscriptions(signal?: AbortSignal): Promise<PlatformResult<readonly SubscriptionView[]>>
+
+/** Create one order after the user selects a recharge amount or subscription.
+ * @param input - Explicit purchase selection.
+ * @returns order amounts and a payment page or QR code; uncertain results must be checked in order history.
+ */
+@Remote createOrder(input: OrderRequest): Promise<PlatformResult<PaymentLaunch>>
+
+/** Read only the current account's payment orders.
+ * @param query - Bounded pagination and status.
+ * @param signal - Client cancellation.
+ * @returns user-owned orders and totals.
+ */
+@Remote getOrders(query: PlatformPageQuery, signal?: AbortSignal): Promise<PlatformResult<OrderPage>>
+
+/** Refresh one order and optionally ask its provider to verify payment.
+ * @param id - Owned order identifier.
+ * @param verify - Query the payment provider through the platform.
+ * @returns authoritative order state; a browser return alone never marks payment successful.
+ */
+@Remote getOrder(id: PaymentOrderId, verify: boolean): Promise<PlatformResult<PaymentOrder>>
+
+/** Cancel an owned pending payment order through the platform's existing rules.
+ * @param id - Owned order identifier.
+ * @returns acknowledgement only after the platform confirms cancellation.
+ */
+@Remote cancelOrder(id: PaymentOrderId): Promise<PlatformResult<null>>
+
+/** List user-owned invoice applications.
+ * @param query - Pagination and status.
+ * @param signal - Client cancellation.
+ * @returns invoice summaries and attachment metadata.
+ */
+@Remote getInvoices(query: PlatformPageQuery, signal?: AbortSignal): Promise<PlatformResult<InvoicePage>>
+
+/** Read one owned invoice, including current version and issued files.
+ * @param id - Invoice id from the account's list.
+ * @returns the current application.
+ */
+@Remote getInvoice(id: InvoiceId): Promise<PlatformResult<InvoiceView>>
+
+/** Calculate invoice fees on the server before submitting evidence.
+ * @param paymentAmount - Actual payment amount in CNY.
+ * @returns server-calculated amounts in integer cents.
+ */
+@Remote quoteInvoice(paymentAmount: string): Promise<PlatformResult<InvoiceQuote>>
+
+/** Submit or edit an application with the website's evidence and version checks.
+ * @param input - Fields, screenshots and stable retry key.
+ * @returns the saved application; uncertain retries must retain the same key and fields.
+ */
+@Remote saveInvoice(input: InvoiceRequest): Promise<PlatformResult<InvoiceView>>
+
+/** Download a file from the latest owned invoice without exposing authentication headers.
+ * @param id - Invoice identifier.
+ * @param fileId - File identifier present in that invoice.
+ * @returns verified PNG, JPEG or PDF content for a user-initiated save.
+ */
+@Remote getInvoiceFile(id: InvoiceId, fileId: InvoiceFileId): Promise<PlatformResult<PlatformFile>>
+
+/** Query the signed-in user's platform usage records and totals for identical filters.
+ * @param query - Date range, model, group, request mode and pagination; user identity always comes from the stored grant.
+ * @param signal - Cancellation owned by the requesting client view.
+ * @returns display-safe usage or an explicit query failure; no request bodies or credentials are retained.
+ */
+@Remote async getUsage(query: UsageQuery, signal?: AbortSignal): Promise<UsageResult>
+
+/** Start system-browser authorization with a loopback callback and PKCE.
+ * @returns the platform authorization URL and pending account state.
+ */
+@Remote startSignIn(): Promise<AccountView>
+
+/** Verify platform credentials without persisting the password or browser session.
+ * @param email - existing platform email account.
+ * @param password - password used only for the current authentication request.
+ * @returns signed-in, two-factor-required, or failed state.
+ */
+@Remote signInWithPassword(email: string, password: string): Promise<AccountView>
+
+/** Complete the current password login's platform two-factor challenge.
+ * @param code - six-digit authenticator code.
+ * @returns signed-in state or a retryable two-factor failure.
+ */
+@Remote finishTwoFactor(code: string): Promise<AccountView>
+
+/** Cancel a pending authorization; an admitted credential commit finishes first.
+ * @returns settled account state, excluding late callbacks.
+ */
+@Remote async cancelSignIn(): Promise<AccountView>
+
+/** Remove local login and revoke the device grant and associated inference leases.
+ * @returns signed-out state; a remote cleanup failure remains visible.
+ */
+@Remote async signOut(): Promise<AccountView>
+
+/** Observe initial state and later committed account changes.
+ * @param signal - Remote subscription lifetime; ending it does not cancel login.
+ * @returns sanitized snapshots with no passwords, tokens or API keys.
+ */
+@Remote({ mode: 'stream' }) async *watch(signal: AbortSignal): AsyncIterable<AccountView>
+```
+
+Source: [`packages/credentials/sub2api-account/src/index.ts`](../../packages/credentials/sub2api-account/src/index.ts)
 
 <a id="authorization-events"></a>
 

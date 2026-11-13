@@ -239,6 +239,14 @@ describe('SystemPrompt', () => {
       expect(renderPrompt(await ctx.systemPrompt.assemble())).toBe(IDENTITY)
     })
 
+    it('uses the configured product identity independently of the deployment persona', async () => {
+      const ctx = new Context()
+      try {
+        await ctx.plugin(SystemPrompt, { harnessIdentity: '你是 WSS 的 AI 助手。', personaPrefix: '处理本地任务。' })
+        expect(renderPrompt(await ctx.systemPrompt.assemble())).toBe('你是 WSS 的 AI 助手。\n\n处理本地任务。')
+      } finally { await ctx.fiber.dispose() }
+    })
+
     it('can omit the harness identity for a deployment that owns the complete persona', async () => {
       const ctx = new Context()
       await ctx.plugin(SystemPrompt, {

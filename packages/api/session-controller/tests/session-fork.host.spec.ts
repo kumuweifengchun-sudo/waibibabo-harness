@@ -348,6 +348,7 @@ describe('sessions.fork', () => {
     const attachSession = vi.fn<(sessionId: SessionId) => Promise<void>>()
       .mockResolvedValue(undefined)
     const workspace = {
+      path: '/proj',
       sessionIds: accounted,
       attachSession,
     } as unknown as Workspace

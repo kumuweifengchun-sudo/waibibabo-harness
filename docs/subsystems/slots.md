@@ -197,6 +197,7 @@ Factory: conversation.content [ConversationContent]
 ├─ conversation.hero.frame [hoc]
 │  └─ id=pixel-whale [PixelWhale]
 ├─ conversation.hero.brand.mark
+├─ conversation.hero.brand.name
 ├─ conversation.hero.workspace
 │  └─ conversation.hero.workspace.directoryFlow
 ├─ conversation.hero.agentPreset

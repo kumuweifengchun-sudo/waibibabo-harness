@@ -606,6 +606,10 @@ export interface PiAiModelProfile {
   id: string
   /** Display name for selectors; defaults to the catalog name, then the id. */
   name?: string
+  /** Wire protocol for this model, overriding the route default. Explicit overrides use the configured-protocol factories. */
+  api?: string
+  /** Versioned endpoint for this model, overriding the route endpoint. */
+  baseURL?: string
   /** Maximum combined request and response context in tokens. */
   contextWindow?: number
   /**
@@ -915,12 +919,13 @@ export function resolveRouteModels(
     if (seen.has(entry.id)) invalid(provider, `lists model "${entry.id}" more than once`)
     seen.add(entry.id)
     const base = defaults.get(entry.id)
-    const api = request.api ?? base?.api ?? routeApi
+    const api = entry.api ?? request.api ?? base?.api ?? routeApi
     if (api === undefined) {
       invalid(provider, `model "${entry.id}" needs an api; the installed catalog does not describe it, so set the`
         + ' route\'s api to the wire protocol its endpoint speaks')
     }
-    const baseUrl = request.baseURL ?? base?.baseUrl ?? providerBaseUrl
+    const baseUrl = entry.baseURL ?? request.baseURL ?? base?.baseUrl ?? providerBaseUrl
+    if (entry.api === '' || entry.baseURL === '') invalid(provider, `model "${entry.id}" has an empty api or baseURL`)
     if (baseUrl === undefined) {
       invalid(provider, `model "${entry.id}" needs a baseURL; the installed catalog does not describe this route`)
     }

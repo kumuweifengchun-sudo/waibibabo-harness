@@ -24,6 +24,7 @@ const DEFAULT_RETAIN_RATIO = 0.16
 
 /** Fields shared by top-level defaults and exact-target overrides. */
 const POLICY_CONFIG_KEYS = [
+  'adaptiveBudget',
   'thresholdRatio',
   'headroomTokens',
   'retainRatio',
@@ -96,6 +97,7 @@ export function resolveConfig(config: BasicCompactionConfig = {}): ResolvedConfi
   }
 
   return deepFreeze({
+    adaptiveBudget: config.adaptiveBudget ?? (config.headroomTokens === undefined && config.maxTokens === undefined),
     thresholdRatio,
     headroomTokens,
     ...retention,
@@ -127,6 +129,8 @@ export function resolveTargetPolicy(
     : { retainTokens: config.retainTokens }
   return deepFreeze({
     target: { provider: target.provider, model: target.model },
+    adaptiveBudget: override?.adaptiveBudget ?? (override?.headroomTokens !== undefined || override?.maxTokens !== undefined
+      ? false : config.adaptiveBudget),
     thresholdRatio: override?.thresholdRatio ?? config.thresholdRatio,
     headroomTokens: override?.headroomTokens ?? config.headroomTokens,
     ...resolveRetention(override ?? {}, inheritedRetention),
@@ -178,7 +182,9 @@ export function resolveCompactSpec(
       + "the adapter model's contextWindow above the effective request maxTokens",
     )
   }
-  const pressureBudgetTokens = messageBudgetTokens - policy.headroomTokens
+  const headroomTokens = policy.adaptiveBudget
+    ? Math.min(policy.headroomTokens, Math.floor(messageBudgetTokens * (1 - policy.thresholdRatio))) : policy.headroomTokens
+  const pressureBudgetTokens = messageBudgetTokens - headroomTokens
   if (pressureBudgetTokens <= 0) {
     throw new TargetPressureConfigError(
       targetKey,
@@ -204,13 +210,16 @@ export function resolveCompactSpec(
   }
   return deepFreeze({
     target: { ...policy.target },
+    adaptiveBudget: policy.adaptiveBudget,
     contextWindow,
     thresholdRatio: policy.thresholdRatio,
     thresholdTokens,
     retainTokens,
     summarizationProvider: policy.summarizationProvider,
     summarizationModel: policy.summarizationModel,
-    maxTokens: policy.maxTokens,
+    maxTokens: policy.adaptiveBudget
+      ? Math.min(policy.maxTokens, reservedCompletionTokens || policy.maxTokens, Math.max(1, thresholdTokens - retainTokens))
+      : policy.maxTokens,
     compactionRetries: policy.compactionRetries,
     maxOverflowRetries: policy.maxOverflowRetries,
   })
@@ -278,6 +287,9 @@ function validatePolicy(
   config: CompactionPolicyConfig | Record<string, unknown>,
   name: string,
 ): void {
+  if (config.adaptiveBudget !== undefined && typeof config.adaptiveBudget !== 'boolean') {
+    throw new Error(`${name}.adaptiveBudget must be a boolean`)
+  }
   const thresholdRatio = config.thresholdRatio
   const headroomTokens = config.headroomTokens
   const retainRatio = config.retainRatio

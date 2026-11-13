@@ -11,6 +11,7 @@ import { readPrimaryRuntime, workspaceDependencyPaths } from '../../../packages/
 import { DesktopHostProcess } from '../src/host-process.ts'
 import { createPluginProfile } from '../src/project-manager.ts'
 import type { DesktopRuntimeDescriptor } from '../src/runtime-tree.ts'
+import { parseBootManifest } from '@deepseek-ai/dsh-client-modules/src/client/manifest.ts'
 
 /**
  * Check CLI package operations, Host startup, its frontend, external plugins and real Office-to-PDF conversion.
@@ -149,11 +150,28 @@ export function apply(ctx) {
       timer = setTimeout(() => { reject(new Error('desktop runtime: Host readiness exceeded 120 seconds')) }, 120_000)
     })])
     clearTimeout(timer)
+    const boot = ready.injections?.find((row): row is { kind: 'global'; name: string; value: unknown } =>
+      typeof row === 'object' && row !== null && 'kind' in row && row.kind === 'global'
+      && 'name' in row && row.name === '__DSH_BOOT__' && 'value' in row)
+    const clientManifest = parseBootManifest(boot?.value)
+    if (!clientManifest.plugins.some(row => row.id === '@deepseek-ai/dsh-waibibabo')) {
+      throw new Error('desktop runtime: product branding is missing from the client module graph')
+    }
     const login = await fetch(ready.url, { redirect: 'manual' })
     const cookie = login.headers.getSetCookie().map(value => value.split(';')[0]).join('; ')
     const response = await fetch(new URL('/', ready.url), { headers: { cookie } })
     if (response.status !== 200 || !(await response.text()).includes('<html')) {
       throw new Error('desktop runtime: packaged frontend smoke failed')
+    }
+    const accountResponse = await fetch(new URL('/api/sub2apiAccount/getState', ready.url), {
+      method: 'POST', headers: { cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'client-request', rpcId: 'desktop-smoke-account',
+        method: 'sub2apiAccount/getState', payload: { args: {} } }),
+    })
+    const accountState = await accountResponse.json() as { result?: { ok?: boolean; value?: { status?: string; productName?: string } } }
+    if (!accountResponse.ok || accountState.result?.ok !== true || accountState.result.value?.status !== 'signed-out'
+      || accountState.result.value.productName !== 'Waibibabo Harnesss') {
+      throw new Error('desktop runtime: platform account Remote is unavailable')
     }
     const pluginResponse = await fetch(new URL('/desktop-smoke', ready.url), { headers: { cookie } })
     if (await pluginResponse.text() !== 'plugin route ready') throw new Error('desktop runtime: plugin HTTP route failed')

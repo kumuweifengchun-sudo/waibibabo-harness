@@ -84,8 +84,8 @@ it('keeps discovery and disposal independent across the two credential routes', 
   expect(ctx.llm.listConfigurableProviders()).toEqual([])
 })
 
-it('resolves listed capabilities with this build\'s model knowledge', async () => {
-  const server = await listing(json({ data: [FLASH, PRO] }))
+it('resolves listed capabilities against the transport version independently of the product version', async () => {
+  const server = await listing(json({ data: [{ ...FLASH, ...requires('0.2.0') }, PRO] }))
   const ctx = await host(server.origin)
   await ctx.plugin(Account, { baseURL: server.baseURL })
   await expect(ctx.llm.resolveModelInfo('deepseek-account', 'deepseek-flash')).resolves.toMatchObject({
@@ -95,7 +95,7 @@ it('resolves listed capabilities with this build\'s model knowledge', async () =
   })
   await expect(ctx.llm.resolveModelInfo('deepseek-account', 'deepseek-v4-pro')).resolves.not.toHaveProperty('systemPromptUpdate')
   expect(server.requests).toHaveLength(1)
-  expect(server.requests[0]?.headers['user-agent']).toMatch(/^deepseek-harness\//)
+  expect(server.requests[0]?.headers['user-agent']).toMatch(/^wss\//)
 })
 
 it('advertises the badges its listing declares', async () => {

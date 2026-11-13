@@ -2,7 +2,7 @@
 
 English | [中文](workspace.zh.md)
 
-A workspace is the persistent record of a directory the user works in: a stable id over a canonical path, a display title, and the ordered account of sessions that belong to it. The subsystem is one package ([dsh-workspace](../../packages/workspace/workspace), `ctx.workspaceRegistry`) — an optional host-side capability, not part of the agent-loop spine, and invisible to models (no tools, no prompt text, no session events). It stores its records through the [storage domain form](storage.md) and validates session membership against [`SessionHeader.cwd`](persistence.md#sessionheader--metadata-beside-the-log), so `storageDomain` and `sessionPersistence` are mandatory startup dependencies: an unavailable persistence peer leaves the plugin pending rather than being mistaken for an empty history. Design record: [domain KV storage Agent Note](../../.agents/notes/proposed/architecture/2026-07-24-domain-kv-storage-and-workspace.md); bootstrap and GUI ordering: [Workspace UI product-flow Agent Note](../../.agents/notes/archived/feature/2026-07-25-workspace-ui-product-flow.md).
+A workspace is the persistent record of a directory the user works in: a stable id, canonical authorized directories with one primary, a display title, and ordered Session membership. The subsystem is one package ([dsh-workspace](../../packages/workspace/workspace), `ctx.workspaceRegistry`) — an optional host-side capability, not part of the agent-loop spine, with no tools or Session events of its own; sandbox policy consumes its directory grants as logged request context. It stores its records through the [storage domain form](storage.md) and validates session membership against [`SessionHeader.cwd`](persistence.md#sessionheader--metadata-beside-the-log), so `storageDomain` and `sessionPersistence` are mandatory startup dependencies: an unavailable persistence peer leaves the plugin pending rather than being mistaken for an empty history. Design record: [domain KV storage Agent Note](../../.agents/notes/proposed/architecture/2026-07-24-domain-kv-storage-and-workspace.md); bootstrap and GUI ordering: [Workspace UI product-flow Agent Note](../../.agents/notes/archived/feature/2026-07-25-workspace-ui-product-flow.md).
 
 Source: [`packages/workspace/workspace/src/types.ts`](../../packages/workspace/workspace/src/types.ts)
 
@@ -24,22 +24,23 @@ Consumers see only the `Workspace` interface; the implementation stays package-p
 
 ```ts type-equiv
 /**
- * One workspace: a stable id over an existing directory, a display title, and
- * an ordered candidate account of sessions. Membership validates header cwd
- * against the workspace path, but preserves an existing account when its
- * fully qualified cwd is missing. Consumers only see this interface; the
- * implementation stays private.
+ * A stable workspace with authorized directories and ordered Session membership.
+ * Membership validates header cwd against recorded primary-directory identities,
+ * including former primaries; those historical identities grant no filesystem access.
+ * Missing fully qualified directories preserve existing membership.
  */
 interface Workspace {
   /** Stable record id (generated uuid). */
   readonly id: WorkspaceId
 
   /**
-   * Canonical directory path: the `fs.realpath` of the path given at create
-   * time (trailing slashes, `..`, and symlinks all resolved). Never rewritten
-   * afterwards, even when the directory disappears (see {@link status}).
+   * Canonical primary directory. New Sessions start here; changing it keeps
+   * existing Sessions and their recorded working directories.
    */
   readonly path: string
+
+  /** Canonical authorized directories, primary first. All follow the Session's sandbox mode. */
+  readonly directories: readonly string[]
 
   /** Display title. Defaults to the final path segment, or a filesystem root's own spelling; duplicates are allowed. */
   readonly title: string
@@ -55,7 +56,8 @@ interface Workspace {
    * prepended at attach, explicit reordering goes through
    * `insertSessionBefore`, and activity never reorders. The durable candidate
    * account is filtered synchronously: missing headers, invalid cwd values,
-   * and canonical cwd mismatches are never returned. A fully qualified cwd
+   * and cwd values outside the recorded primary-directory history are never
+   * returned. A fully qualified cwd
    * whose realpath or directory stat fails with ENOENT preserves an existing
    * candidate, including a dangling symlink; other filesystem failures do not.
    * A subsequent mutation prunes filtered candidates, not missing-directory
@@ -108,10 +110,8 @@ interface Workspace {
   detachSession(sessionId: SessionId): Promise<void>
 
   /**
-   * Live directory check, uncached: whether {@link path} currently exists and
-   * is a directory. A missing directory never mutates the record — the
-   * directory may only be temporarily moved.
-   * @returns `'ok'` when the directory exists, `'missing-dir'` otherwise.
+   * Check all authorized directories without caching or mutating the record.
+   * @returns `'ok'` when every directory exists, `'missing-dir'` otherwise.
    */
   status(): Promise<'ok' | 'missing-dir'>
 }
@@ -338,6 +338,13 @@ Host service backing the generated `ctx.remote.workspace` namespace.
 @Remote('rename') rename(request: WorkspaceRenameRequest): Promise<WorkspaceValue>
 
 /**
+ * Save the workspace title and directory grants. This action is separate from rename-only access.
+ * @param request - workspace identity, title, and authorized directories, primary first.
+ * @returns the updated workspace projection.
+ */
+@Remote('edit') edit(request: WorkspaceEditRequest): Promise<WorkspaceValue>
+
+/**
  * Remove one Workspace registration while retaining files and Sessions.
  * @param request - Workspace identity to remove.
  * @returns deletion confirmation.
@@ -503,6 +510,24 @@ initializeDefault(resolveDirectory: () => Promise<string>): Promise<Workspace | 
 get(id: WorkspaceId): Workspace | undefined
 
 /**
+ * Find a Session's workspace, inheriting it only through subagent ancestry.
+ * Directory edits temporarily reject policy resolution until their durable write settles.
+ * @param header - caller's immutable Session metadata.
+ * @returns the owning workspace, or undefined for an ungrouped Session.
+ */
+forSession(header: SessionHeader): Workspace | undefined
+
+/**
+ * Save a title and canonical authorized directories atomically. New Sessions use the first directory.
+ * Running work and persistent terminals must finish before the directory grants can change.
+ * @param id - workspace identity.
+ * @param title - validated display title.
+ * @param directories - authorized directories, primary first; omission preserves them.
+ * @returns the updated workspace after durability.
+ */
+update(id: WorkspaceId, title: string, directories?: readonly string[]): Promise<Workspace>
+
+/**
  * Synchronous workspace projection in durable registry order. Every
  * entity's `sessionIds` getter is already filtered by the startup/live
  * canonical-cwd header index; this method performs no persistence reads.
@@ -589,7 +614,7 @@ unpinSession(sessionId: SessionId): Promise<void>
 async resolveByPath(path: string): Promise<Workspace | undefined>
 ```
 
-Types: [SessionId](core.md)
+Types: [SessionHeader](persistence.md) · [SessionId](core.md)
 
 Source: [`packages/workspace/workspace/src/index.ts`](../../packages/workspace/workspace/src/index.ts)
 

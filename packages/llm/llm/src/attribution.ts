@@ -7,13 +7,7 @@
  * @module @deepseek-ai/dsh-llm/attribution
  */
 
-import { createRequire } from 'node:module'
-
-// The package's own manifest is the single source of the version so the
-// User-Agent cannot drift from what is published (`./package.json` is an
-// export of this package; the relative path resolves from both `src/` and
-// the bundled `lib/`).
-const { version } = createRequire(import.meta.url)('../package.json') as { version: string }
+import product from './waibibabo-product.json' with { type: 'json' }
 
 /**
  * Static public application identity sent to LLM providers.
@@ -25,10 +19,10 @@ const { version } = createRequire(import.meta.url)('../package.json') as { versi
 export interface AppIdentity {
   /** `User-Agent` product token (lowercase, hyphenated). */
   product: string
-  /** Product version; sourced from package metadata, never hand-copied. */
+  /** Product version; sourced from product metadata, never hand-copied. */
   version: string
-  /** Repository home URL of the app, used as the `User-Agent` comment. */
-  url: string
+  /** Optional public URL included as a `User-Agent` comment. */
+  url?: string
 }
 
 /**
@@ -38,20 +32,18 @@ export interface AppIdentity {
  * can suppress attribution entirely.
  */
 export const APP_IDENTITY: AppIdentity = {
-  product: 'deepseek-harness',
-  version,
-  url: 'https://github.com/deepseek-ai/deepseek-harness',
+  product: product.userAgentProduct,
+  version: product.version,
 }
 
 /**
- * The standard `User-Agent` value: `product/version (+url)`. The
- * parenthesized `+url` comment is the conventional self-identification form
- * (RFC 9110 §10.1.5 product + comment syntax).
+ * The standard `User-Agent` value: `product/version`, with an optional
+ * `(+url)` comment for identities that declare a public URL.
  * @param identity - the identity to render; defaults to {@link APP_IDENTITY}.
  * @returns the ready-to-send header value.
  */
 export function userAgent(identity: AppIdentity = APP_IDENTITY): string {
-  return `${identity.product}/${identity.version} (+${identity.url})`
+  return `${identity.product}/${identity.version}${identity.url === undefined ? '' : ` (+${identity.url})`}`
 }
 
 /**

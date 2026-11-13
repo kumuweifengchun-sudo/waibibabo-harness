@@ -205,10 +205,11 @@ function rootTypeRemoval(path: string, entry: string): string {
 }
 
 describe('package dependency scope', () => {
-  it('keeps the measured Host relay roster explicit', () => {
+  it('keeps the Host relay and installable bundle exceptions explicit', () => {
     expect(PACKAGE_DEPENDENCY_POLICY.clientFaceExclude).toEqual([
       '@deepseek-ai/dsh-api-session-controller',
       '@deepseek-ai/dsh-api-workspace-controller',
+      '@deepseek-ai/dsh-waibibabo',
     ])
     expect(PACKAGE_DEPENDENCY_POLICY.hostPackages).toEqual([
       '@deepseek-ai/dsh-llm',

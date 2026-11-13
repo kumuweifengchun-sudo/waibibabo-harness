@@ -25,6 +25,8 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
+Open terminals and pending spawns report the `terminal` workspace activity family, even while idle. Close them before editing workspace directory grants. Stopping workspace activity cancels pending spawns and closes owned terminals.
+
 Mount `@deepseek-ai/dsh-terminal` whenever a composition needs terminal sessions whose state survives across tool calls. The service alone does nothing useful: pair it with a backend such as `@deepseek-ai/dsh-terminal-bash` and a tool package such as `@deepseek-ai/dsh-tool-terminal`, and load all three in one composition.
 
 ### When to choose it

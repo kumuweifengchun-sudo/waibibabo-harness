@@ -52,7 +52,7 @@ it.each(['pack', 'runtime'] as const)('overlaps Windows preparation and waits fo
   const finished = new Set<string>()
   run.run.mockImplementation(async (stage) => {
     stages.push(stage)
-    if (stage.startsWith('run release:pack --family dsh ')) await pack.promise
+    if (stage.startsWith('exec tsx apps/desktop/scripts/pack-local-packages.ts ')) await pack.promise
     if (stage === 'run prepare:runtime --defer-primary-runtime-smoke') {
       await runtime.promise
       finished.add('runtime')
@@ -64,7 +64,7 @@ it.each(['pack', 'runtime'] as const)('overlaps Windows preparation and waits fo
   const outcome = operation.then(() => undefined, (error: unknown) => error)
   try {
     await vi.waitFor(() => {
-      expect(stages.some(stage => stage.startsWith('run release:pack --family dsh '))).toBe(true)
+      expect(stages.some(stage => stage.startsWith('exec tsx apps/desktop/scripts/pack-local-packages.ts '))).toBe(true)
       expect(stages).toContain('run prepare:runtime --defer-primary-runtime-smoke')
     })
     expect(stages).not.toContain('run sign:primary-runtime')
@@ -91,7 +91,7 @@ it.each(['pack', 'runtime'] as const)('drains the other Windows preparation afte
   let settled = false
   run.run.mockImplementation(async (stage) => {
     stages.push(stage)
-    if (stage.startsWith('run release:pack --family dsh ')) await pack.promise
+    if (stage.startsWith('exec tsx apps/desktop/scripts/pack-local-packages.ts ')) await pack.promise
     if (stage === 'run prepare:runtime --defer-primary-runtime-smoke') await runtime.promise
   })
   const outcome = packageTarget(parseDesktopPackageInvocation(['win-x64'], 'win32', 'x64'), environment, run).then(
@@ -100,7 +100,7 @@ it.each(['pack', 'runtime'] as const)('drains the other Windows preparation afte
   )
   try {
     await vi.waitFor(() => {
-      expect(stages.some(stage => stage.startsWith('run release:pack --family dsh '))).toBe(true)
+      expect(stages.some(stage => stage.startsWith('exec tsx apps/desktop/scripts/pack-local-packages.ts '))).toBe(true)
       expect(stages).toContain('run prepare:runtime --defer-primary-runtime-smoke')
     })
     ;(failed === 'pack' ? pack : runtime).reject(failure)
@@ -109,7 +109,7 @@ it.each(['pack', 'runtime'] as const)('drains the other Windows preparation afte
     expect(writeFileSync).not.toHaveBeenCalled()
     ;(failed === 'pack' ? runtime : pack).resolve(undefined)
     expect(await outcome).toBe(failure)
-    expect(stages.filter(stage => stage.startsWith('run release:pack'))).toHaveLength(1)
+    expect(stages.filter(stage => (stage.startsWith('run release:pack') || stage.startsWith('exec tsx apps/desktop/scripts/pack-local-packages.ts')))).toHaveLength(1)
     expect(stages.some(stage => stage.startsWith('--dir apps/desktop-host pack'))).toBe(false)
     expect(stages.some(stage => stage.startsWith('--dir native/system'))).toBe(false)
     expect(stages.some(stage => stage.startsWith('run sign:primary-runtime'))).toBe(false)
@@ -140,7 +140,7 @@ it.each([undefined, '2'])('uses bounded Windows packing while retaining signing 
   const { run, stages } = supervisor()
   const settings = workers === undefined ? environment : { ...environment, DSH_DESKTOP_WINDOWS_PACK_CONCURRENCY: workers }
   await packageTarget(parseDesktopPackageInvocation(['win-x64'], 'win32', 'x64'), settings, run)
-  const packs = stages.filter(stage => stage.startsWith('run release:pack'))
+  const packs = stages.filter(stage => (stage.startsWith('run release:pack') || stage.startsWith('exec tsx apps/desktop/scripts/pack-local-packages.ts')))
   expect(packs).toHaveLength(2)
   for (const stage of packs) expect(stage).toContain(`--concurrency ${workers ?? '4'}`)
   expect(stages).toContain('preflight:windows-signing')
@@ -151,7 +151,7 @@ it.each([undefined, '2'])('uses bounded Windows packing while retaining signing 
 it('requires one signing preflight before building, then records only the complete release', async () => {
   const { run, stages } = supervisor()
   await packageTarget(parseDesktopPackageInvocation(['win-x64'], 'win32', 'x64'), environment, run)
-  expect(stages.slice(0, 2)).toEqual(['preflight:windows-signing', 'run build:official'])
+  expect(stages.slice(0, 2)).toEqual(['preflight:windows-signing', 'run build --profile waibibabo'])
   expect(stages.filter(stage => stage === 'preflight:windows-signing')).toHaveLength(1)
   expect(vi.mocked(withWindowsSigningStage).mock.calls.map(([options]) => options.stage))
     .toEqual(['preflight', 'artifacts'])
@@ -183,7 +183,7 @@ it('initializes shared storage only after acquiring the preflight stage lock', a
   await packageTarget(parseDesktopPackageInvocation(['win-x64'], 'win32', 'x64'), environment, run)
 })
 
-it.each(['preflight:windows-signing', 'run build:official', 'run sign:primary-runtime', 'run prepare:dsh --defer-runtime-smoke', 'run sign:primary-runtime --dsh',
+it.each(['preflight:windows-signing', 'run build --profile waibibabo', 'run sign:primary-runtime', 'run prepare:dsh --defer-runtime-smoke', 'run sign:primary-runtime --dsh',
   'exec tsx scripts/smoke-packaged-runtime.ts',
   'exec electron-builder --config electron-builder.config.mjs --win --x64 --publish never'])
 ('never continues or records a release after %s fails', async (failure) => {
@@ -197,7 +197,7 @@ it.each(['preflight:windows-signing', 'run build:official', 'run sign:primary-ru
 it.each(['--unsigned', '--prepare-only'])('keeps %s hardware-free and creates no release record', async (mode) => {
   const { run, stages } = supervisor()
   await packageTarget(parseDesktopPackageInvocation(['win-x64', mode], 'win32', 'x64'), environment, run)
-  expect(stages[0]).toBe(mode === '--unsigned' ? 'run build --profile local' : 'run build:official')
+  expect(stages[0]).toBe('run build --profile waibibabo')
   expect(stages).not.toContain('preflight:windows-signing')
   expect(stages).not.toContain('run sign:primary-runtime')
   expect(stages).not.toContain('run sign:primary-runtime --dsh')
@@ -207,7 +207,7 @@ it.each(['--unsigned', '--prepare-only'])('keeps %s hardware-free and creates no
   expect(stages.includes('exec tsx scripts/smoke-packaged-runtime.ts --unsigned')).toBe(mode === '--unsigned')
 })
 
-it.each(['mac-arm64', 'mac-x64', 'win-x64'] as const)('selects branding from the signing mode for %s', async (target) => {
+it.each(['mac-arm64', 'mac-x64', 'win-x64'] as const)('uses product branding for every packaging mode on %s', async (target) => {
   const modes = [[], ['--unsigned'], ['--dir'], ['--unsigned', '--dir'], ['--prepare-only'],
     ...(target === 'win-x64' ? [] : [['--skip-notarization'], ['--skip-notarization', '--dir']])]
   for (const flags of modes) {
@@ -224,15 +224,15 @@ it.each(['mac-arm64', 'mac-x64', 'win-x64'] as const)('selects branding from the
       DSH_CLIENT_TITLE: 'Inherited title',
     }, run)
     const build = stages.find(stage => stage.startsWith('run build'))
-    expect(build).toBe(unsigned ? 'run build --profile local' : 'run build:official')
-    expect(stages.some(stage => stage.startsWith('exec tsx apps/desktop/scripts/pack-local-packages.ts'))).toBe(unsigned)
-    expect(stages.some(stage => stage.startsWith('run release:pack --family dsh'))).toBe(!unsigned)
+    expect(build).toBe('run build --profile waibibabo')
+    expect(stages.some(stage => stage.startsWith('exec tsx apps/desktop/scripts/pack-local-packages.ts'))).toBe(true)
+    expect(stages.some(stage => stage.startsWith('run release:pack --family dsh'))).toBe(false)
   }
 })
 
 it.each([
-  ['mac-arm64', 'run build --profile local'],
-  ['win-x64', 'run build --profile local'],
+  ['mac-arm64', 'run build --profile waibibabo'],
+  ['win-x64', 'run build --profile waibibabo'],
   ['mac-arm64', 'exec tsx apps/desktop/scripts/pack-local-packages.ts'],
   ['win-x64', 'exec tsx apps/desktop/scripts/pack-local-packages.ts'],
 ] as const)('stops unsigned %s packaging when %s fails', async (target, failure) => {
@@ -313,7 +313,7 @@ it.each([undefined, '2'])('passes macOS pack concurrency %s only to workspace pa
     DSH_DESKTOP_MACOS_NOTARIZATION_PROXY: 'http://apple.example:8081',
   }, run)
   const calls = run.run.mock.calls
-  const packs = calls.filter(call => call[0].startsWith('run release:pack'))
+  const packs = calls.filter(call => (call[0].startsWith('run release:pack') || call[0].startsWith('exec tsx apps/desktop/scripts/pack-local-packages.ts')))
   expect(packs).toHaveLength(2)
   for (const call of packs) expect(call[2].slice(-2)).toEqual(['--concurrency', concurrency ?? '4'])
   for (const call of calls) {

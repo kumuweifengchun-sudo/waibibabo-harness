@@ -6,6 +6,7 @@
 
 import { Context, Service } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import type {} from '@deepseek-ai/dsh-workspace'
 import { TerminalBackendCleanupError } from './types.ts'
 import type {
   TerminalBackend,
@@ -44,6 +45,13 @@ export { TerminalBackendCleanupError } from './types.ts'
 
 /** Opaque identity minted by {@link TerminalSessionService} for one live PTY session. */
 export type TerminalSessionId = TerminalSessionIdValue
+
+declare module '@deepseek-ai/dsh-workspace/types' {
+  interface SessionActivityKindMap {
+    /** A persistent terminal is open or still being created. */
+    terminal: true
+  }
+}
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -115,6 +123,18 @@ export class TerminalSessionService extends Service {
   constructor(ctx: Context) {
     super(ctx, 'terminals')
     ctx.effect(() => () => this.disposeAll(), 'pty teardown')
+    ctx.on('workspace/session-activity', async ({ sessionId }, next) => {
+      const owner = ctx.get('agents')?.get(sessionId)
+      const rest = await next()
+      return owner !== undefined && this.hasOwnerActivity(owner) ? [...rest, { kind: 'terminal' as const }] : rest
+    })
+    ctx.on('workspace/session-stop', async ({ sessionId }) => {
+      const owner = ctx.get('agents')?.get(sessionId)
+      if (owner === undefined) return
+      for (const pending of this.pendingSpawns.get(owner) ?? []) pending.controller.abort()
+      await Promise.all([...this.sessions.values()].filter(record => record.owner === owner)
+        .map(record => this.kill(owner, record.id, 'workspace activity stopped')))
+    })
   }
 
   /**

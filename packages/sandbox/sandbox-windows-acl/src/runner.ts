@@ -9,6 +9,7 @@
  * Stable argv contract (the seam builds it; a native-exe replacement would
  * keep the same contract):
  *   [node, runner.js, '--workspace', <dir>, '--temp', <dir>,
+ *    ['--writable-root', <physical-extra-dir>]...,
  *    '--mode', <read-only|workspace-write>,
  *    ['--write-sid', <S-1-4-…>,
  *     '--temp-write-sid', <S-1-4-…>], '--', <argv...>]
@@ -45,11 +46,12 @@
  */
 
 import { SUBPROCESS_CONTROL_ENV, SUBPROCESS_CONTROL_FD } from '@deepseek-ai/dsh-subprocess/control'
-import { closeSync, existsSync, mkdtempSync, rmSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { closeSync, existsSync, mkdtempSync, realpathSync, rmSync, statSync } from 'node:fs'
+import { isAbsolute, join, resolve } from 'node:path'
 
 import { win32 } from './ffi.ts'
-import { AclSandbox, assertTempRootOutsideWorkspace } from './index.ts'
+import { AclSandbox, AclWriteGrant, assertTempRootOutsideWorkspace } from './index.ts'
+import { assertPrivateTempDisjoint } from './path-boundary.ts'
 import { tempWriteSid, workspaceWriteSid } from './workspace-sid.ts'
 
 const RUNNER_SIGNATURE = 'windows-acl-run'
@@ -65,6 +67,7 @@ function fail(detail: string): never {
 
 interface ParsedArgs {
   workspace: string
+  additionalRoots: string[]
   temp: string
   mode: 'read-only' | 'workspace-write'
   writeSid: string | undefined
@@ -79,6 +82,7 @@ function parseArgs(raw: string[]): ParsedArgs {
   let mode: string | undefined
   let writeSid: string | undefined
   let parsedTempWriteSid: string | undefined
+  const additionalRoots: string[] = []
   let index = 0
   for (; index < raw.length; index++) {
     const token = raw[index]
@@ -91,6 +95,7 @@ function parseArgs(raw: string[]): ParsedArgs {
     if (value === undefined) fail(`missing value after ${token}`)
     switch (token) {
       case '--workspace': workspace = value; break
+      case '--writable-root': additionalRoots.push(value); break
       case '--temp': temp = value; break
       case '--mode': mode = value; break
       case '--write-sid': writeSid = value; break
@@ -104,7 +109,8 @@ function parseArgs(raw: string[]): ParsedArgs {
   const argv = raw.slice(index)
   const command = argv[0]
   if (command === undefined) fail('missing command after --')
-  return { workspace, temp, mode, writeSid, tempWriteSid: parsedTempWriteSid, command, args: argv.slice(1) }
+  return { workspace, additionalRoots: [...new Set(additionalRoots)].filter(root => root !== workspace),
+    temp, mode, writeSid, tempWriteSid: parsedTempWriteSid, command, args: argv.slice(1) }
 }
 
 function requireDirectory(label: string, path: string): void {
@@ -119,6 +125,12 @@ async function main(): Promise<number> {
   // a bogus root must fail loudly at the runner boundary, never mid-child.
   requireDirectory('--workspace', parsed.workspace)
   requireDirectory('--temp', parsed.temp)
+  if (parsed.mode === 'read-only' && parsed.additionalRoots.length > 0) fail('read-only does not accept --writable-root')
+  for (const root of parsed.additionalRoots) {
+    requireDirectory('--writable-root', root)
+    if (!isAbsolute(root) || realpathSync.native(root) !== resolve(root)) fail('--writable-root requires a physical absolute directory')
+    assertTempRootOutsideWorkspace(root, parsed.temp)
+  }
 
   const seamManaged = parsed.writeSid !== undefined || parsed.tempWriteSid !== undefined
   if (parsed.mode === 'read-only' && seamManaged) {
@@ -142,6 +154,7 @@ async function main(): Promise<number> {
   let ownedTempDir: string | undefined
   let sandbox: AclSandbox | undefined
   let initialized = false
+  const extraGrants: AclWriteGrant[] = []
   try {
     let privateTempDir: string | null = null
     let writeSid: string | undefined
@@ -159,11 +172,21 @@ async function main(): Promise<number> {
         privateTempSid = tempWriteSid(privateTempDir)
       }
     }
+    if (privateTempDir !== null) assertPrivateTempDisjoint(parsed.additionalRoots, privateTempDir)
+    const additionalWriteSids = parsed.additionalRoots.map(root => workspaceWriteSid(root))
+    if (!seamManaged) {
+      for (const root of parsed.additionalRoots) {
+        const grant = AclWriteGrant.create(workspaceWriteSid(root))
+        extraGrants.push(grant)
+        grant.add(root, true)
+      }
+    }
     sandbox = new AclSandbox({
       writableDirs: parsed.mode === 'workspace-write' ? [parsed.workspace] : [],
       tempDir: privateTempDir,
       mode: parsed.mode,
       ...writeSid === undefined ? {} : { writeSid },
+      additionalWriteSids,
       ...privateTempSid === undefined ? {} : { tempWriteSid: privateTempSid },
       manageDacls: !seamManaged,
     })
@@ -193,6 +216,13 @@ async function main(): Promise<number> {
     if (initialized) {
       try {
         sandbox?.dispose()
+      } catch (error) {
+        process.stderr.write(`${RUNNER_SIGNATURE}: cleanup: ${error instanceof Error ? error.message : String(error)}\n`)
+      }
+    }
+    for (const grant of extraGrants) {
+      try {
+        grant.dispose()
       } catch (error) {
         process.stderr.write(`${RUNNER_SIGNATURE}: cleanup: ${error instanceof Error ? error.message : String(error)}\n`)
       }

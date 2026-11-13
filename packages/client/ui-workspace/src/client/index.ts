@@ -265,7 +265,9 @@ export function apply(ctx: Context): void {
   const workspaceActionRequest = createSnapshotStore<WorkspaceActionRequest | null>(null)
   const requestWorkspaceAction = (workspaceId: WorkspaceId, displayTitle: string, action: 'rename' | 'delete'): void => {
     const workspace = workspaces.list.getSnapshot().items.find(row => row.workspaceId === workspaceId)
-    if (workspace === undefined || !ctx.remoteAccess.source('workspace', workspaceId, `workspace/${action}`).getSnapshot()) return
+    const allowed = ctx.remoteAccess.source('workspace', workspaceId, `workspace/${action}`).getSnapshot()
+      || action === 'rename' && ctx.remoteAccess.source('workspace', workspaceId, 'workspace/edit').getSnapshot()
+    if (workspace === undefined || !allowed) return
     workspaceActionRequest.set({ action, workspaceId, displayTitle, storedTitle: workspace.title })
   }
   ctx.slots.inject('contextMenu.icon', function* () {
@@ -278,8 +280,9 @@ export function apply(ctx: Context): void {
   })
   ctx.effect(() => ctx.contextMenus.register({
     id: 'workspace.rename', target: 'workspace', order: 100,
-    resolve: ({ workspaceId, displayTitle }) => ctx.remoteAccess.source('workspace', workspaceId, 'workspace/rename').getSnapshot()
-      ? [{ id: 'rename', label: ctx.locale.bind(NS)('rename'), icon: { key: 'workspace.rename' }, run: () => { requestWorkspaceAction(workspaceId, displayTitle, 'rename') } }] : [],
+    resolve: ({ workspaceId, displayTitle }) => (ctx.remoteAccess.source('workspace', workspaceId, 'workspace/rename').getSnapshot()
+      || ctx.remoteAccess.source('workspace', workspaceId, 'workspace/edit').getSnapshot())
+      ? [{ id: 'rename', label: ctx.locale.bind(NS)('workspace.edit'), icon: { key: 'workspace.rename' }, run: () => { requestWorkspaceAction(workspaceId, displayTitle, 'rename') } }] : [],
   }), 'workspace: rename menu action')
   ctx.effect(() => ctx.contextMenus.register({
     id: 'workspace.delete', target: 'workspace', order: 300,
@@ -297,7 +300,7 @@ export function apply(ctx: Context): void {
     searchResultLimit: sessions.searchResultLimit,
     requestSessionRename,
     notifyArchivedNotOpenable: () => { notify({ kind: 'archivedNotOpenable' }) },
-    renameWorkspace: async (workspaceId, title) => { await workspaces.rename(workspaceId, title) },
+    renameWorkspace: async (workspaceId, title, directories) => { await workspaces.rename(workspaceId, title, directories) },
     deleteWorkspace: async (workspaceId) => { await workspaces.delete(workspaceId) },
     insertWorkspaceBefore: async (workspaceId, beforeWorkspaceId) => {
       await workspaces.insertBefore(workspaceId, beforeWorkspaceId)

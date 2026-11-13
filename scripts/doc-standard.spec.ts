@@ -12,6 +12,7 @@ import { existsSync, globSync, readFileSync } from 'node:fs'
 import { resolve, sep } from 'node:path'
 import { JSON_SCHEMA, load } from 'js-yaml'
 import { describe, expect, it } from 'vitest'
+import { productDocValidationText } from './product-chinese-docs.ts'
 import { readCurrentSessionFormatVersion } from './gen-session-format-catalog.ts'
 
 const root = resolve(import.meta.dirname, '..')
@@ -157,6 +158,7 @@ function packageReadmeMetadataErrors(file: string, metadata: Record<string, unkn
 }
 
 function packageReadmeStructureErrors(file: string, source: string): string[] {
+  source = productDocValidationText(file, source)
   const chinese = file.endsWith('.zh.md')
   const required = chinese
     ? [[/^## 概述$/m, '概述'], [/^## 目录$/m, '目录'], [/^#{2,3} 开发备注$/m, '开发备注']] as const

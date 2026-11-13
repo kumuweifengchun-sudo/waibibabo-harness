@@ -27,6 +27,8 @@ interface AssembledPlugin extends WebBootEntry {
 }
 
 interface AssembledBootOptions {
+  /** Repository-relative product bundle directories composed after the base Web layers. */
+  readonly bundleDirectories?: readonly string[]
   /** Package ids omitted from this mounted composition. */
   readonly exclude?: readonly string[]
   /** Remote answers owned by this assembled case. */
@@ -91,8 +93,11 @@ const comboReference = (ids: readonly string[], rev: string): string =>
   `plugins/??${ids.map(id => `${id}/client.js`).join(',')}&rev=${rev}`
 
 /** Derive the assembled browser graph from the same bundle patches and package declarations as `dsh web`. */
-function loadAssembledPlugins(): readonly AssembledPlugin[] {
-  const entries = appBoot.composeEntries(BUNDLE_LAYERS.map((layer) => {
+function loadAssembledPlugins(bundleDirectories: readonly string[] = []): readonly AssembledPlugin[] {
+  const layers = [...BUNDLE_LAYERS, ...bundleDirectories.map(dir => ({
+    dir: join(REPO_ROOT, dir), manifest: join(REPO_ROOT, dir, 'package.json'),
+  }))]
+  const entries = appBoot.composeEntries(layers.map((layer) => {
     const declared = (JSON.parse(readFileSync(layer.manifest, 'utf8')) as { dsh: { bundle: { patch: string | string[] } } }).dsh.bundle
     return appBoot.bundlePatchPaths(layer.dir, declared).flatMap(patch => appBoot.loadOverlayPatches('assembled boot', patch))
   }))
@@ -293,7 +298,8 @@ export function installAssembledBootEnv(): void {
  */
 export function mountAssembledApp(options: AssembledBootOptions = {}): AssembledRemote {
   const excluded = new Set(options.exclude)
-  const plugins = PLUGINS.filter(plugin => !excluded.has(plugin.id))
+  const composed = options.bundleDirectories === undefined ? PLUGINS : loadAssembledPlugins(options.bundleDirectories)
+  const plugins = composed.filter(plugin => !excluded.has(plugin.id))
   const remote = createAssembledRemote(options.remote)
   mountedRemote = remote.mock
   win.__DSH_TRANSPORT__ = { rpc: remote.mock.rpc }

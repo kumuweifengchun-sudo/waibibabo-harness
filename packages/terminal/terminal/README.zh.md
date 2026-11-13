@@ -25,6 +25,8 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
+已打开的终端和仍在创建的终端会报告 `terminal` 工作区活动，即使终端空闲也不例外。修改工作区目录授权前需先关闭它们。停止工作区活动会取消创建中的终端并关闭所属终端。
+
 当组合需要状态跨工具调用存活的终端会话时，挂载 `@deepseek-ai/dsh-terminal`。单独的服务本身没有用处：请与 `@deepseek-ai/dsh-terminal-bash` 之类的后端、`@deepseek-ai/dsh-tool-terminal` 之类的工具包配对，并在同一个组合中一起加载。
 
 ### 何时选择

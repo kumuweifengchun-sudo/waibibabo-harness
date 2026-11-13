@@ -499,6 +499,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'The Host owns browser authorization and local credentials; UI consumers receive state without tokens.',
   },
   {
+    key: 'sub2apiAccount',
+    pkg: 'sub2api-account',
+    title: 'Sub2API desktop account',
+    mode: 'service',
+    consumers: ['waibibabo'],
+    note: 'The desktop Host owns platform authorization, rotating grants and group-scoped model leases; the account Remote returns display-safe state.',
+  },
+  {
     key: 'authorization',
     pkg: 'authorization',
     title: 'Authorization flow registry',

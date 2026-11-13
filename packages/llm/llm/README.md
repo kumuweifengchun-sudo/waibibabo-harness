@@ -58,6 +58,8 @@ for await (const chunk of ctx.llm.stream({
 
 After a successful mount, `ctx.llm.listProviders()` reports the registered routes in registration order.
 
+Provider requests carry `User-Agent: wss/<version>`, where `<version>` comes from the [shared desktop product metadata](src/waibibabo-product.json). The default identity has no URL comment; custom identities may include one through `AppIdentity.url`. See [application attribution](../../../docs/subsystems/llm-streaming.md).
+
 Auxiliary request producers declare their `purpose` in `LlmRequestPurposeMap` through module augmentation of `@deepseek-ai/dsh-llm/types`; each key maps to `true`. `GenerateOptions.purpose` accepts the declared keys, while ordinary conversation requests omit it. Import the producer package or its public types before constructing that auxiliary request. Adapters carry the purpose as model-hidden transport metadata and handle unfamiliar purposes without rejecting the request.
 
 `GenerateOptions.messages` accepts durable `Message` values and request-only `RequestUserInput` values. Request-only inputs carry user-role content with no `id` or `source`; Session writes and Agent delivery still require durable messages. Callers keep auxiliary inputs unchanged until the stream settles. A caller that records its exact request, such as session-title generation, must use durable messages.

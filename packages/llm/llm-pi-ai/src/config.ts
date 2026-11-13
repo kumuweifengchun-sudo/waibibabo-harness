@@ -108,7 +108,7 @@ export interface PiAiProviderProfile {
   /** Name shown by configuration surfaces; defaults to the route key. */
   displayName?: string
   /**
-   * Wire protocol every model on this route speaks. Omission keeps each
+   * Default wire protocol for models without an explicit model-level api. Omission keeps each
    * installed catalog model's own protocol, which is why a catalog route needs
    * no protocol at all; a route the catalog does not ship must name one.
    */
@@ -331,6 +331,8 @@ const reasoningEfforts = z.dict(
 /** The fields a `models` entry and a `modelOverrides` value share; only the id's home differs. */
 const modelFields = {
   name: z.string(),
+  api: z.string(),
+  baseURL: z.string(),
   contextWindow: z.number().step(1).min(1),
   maxTokens: z.number().step(1).min(1),
   // No explicit default, unlike the route's `defaultInput`: schemastery
@@ -520,6 +522,8 @@ export function resolveProfiles(
         ...source.api === undefined ? {} : { api: source.api },
         ...source.baseURL === undefined ? {} : { baseURL: source.baseURL },
         models: catalog.models,
+        modelApiOverrides: source.models?.some(model => model.api !== undefined)
+          || Object.values(source.modelOverrides ?? {}).some(model => model.api !== undefined),
         namesCredential: source.apiKeyEnv !== undefined,
       })
     } catch (error) {

@@ -35,6 +35,8 @@ The adapter accepts the LLM service's [request-only user inputs](../llm/README.m
 
 Choose this adapter for DeepSeek's official API or a Messages-compatible gateway through `baseURL`. Choose `dsh-llm-pi-ai` when the same composition also routes other providers or hand-declared gateways through pi-ai's catalogs; the two adapters can be mounted together because their route names do not collide. Registering any other adapter for `deepseek-official` fails with `DUPLICATE_ADAPTER`.
 
+The model listing reads compatibility requirements from `client_requirements["deepseek-harness"]` and badges from `client_metadata["deepseek-harness"]`. These protocol keys are independent of the request's product `User-Agent`.
+
 <a id="minimal-configuration"></a>
 ### Minimal configuration
 

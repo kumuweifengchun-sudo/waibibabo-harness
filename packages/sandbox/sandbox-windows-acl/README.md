@@ -25,11 +25,15 @@ On Windows, this package confines child-process writes and deletes to the worksp
 <a id="use-this-package"></a>
 ## Use this package
 
+The runner accepts repeated `--writable-root` arguments for physical additional directories. Each directory uses its own `workspaceWriteSid`, so removing an extra folder or changing the primary excludes the old capability from subsequent tokens. With seam-managed grants the provider owns all standing ACLs; standalone runners provision them before spawning. `AclSandboxOptions.additionalWriteSids` adds caller-owned directory capabilities to the token without managing their ACLs; read-only mode rejects a non-empty list.
+
 On Windows, mounting the local sandbox provider makes this backend the runner behind `ctx.sandbox` — no extra configuration. Embed the `AclSandbox` API directly when you spawn confined children outside the harness.
 
 ### When to choose it
 
 Choose it for Windows compositions that confine subprocess file effects under `read-only` or `workspace-write`. Choose a different mechanism when the child must also be read-confined or network-restricted: `WRITE_RESTRICTED` intersects write accesses only, so pair this backend with a read-side policy or an AppContainer capability token for stronger confinement.
+
+A `SetNamedSecurityInfoW` access-denied failure while granting the workspace stops command startup and explains the required `WRITE_DAC` and `WRITE_OWNER` rights. Ordinary file modification permission does not imply either right; the backend never retries without confinement or silently broadens the caller permissions.
 
 ### Direct API
 

@@ -1,5 +1,9 @@
 {
   "excluded": [
+    "apps/desktop/WAIBIBABO.md",
+    "packages/credentials/sub2api-account/README.md",
+    "packages/bundle/waibibabo/README.md",
+    "docs/upgrade-guide/v0.2.2-rc.1/waibibabo-desktop/guide.md",
     ".agents/notes/AGENTS.md",
     ".agents/notes/implemented/AGENTS.md",
     ".agents/notes/implemented/CLAUDE.md",

@@ -18,6 +18,14 @@ vi.mock('../src/preload-windows.ts', () => ({ syncWindowsAppearance: vi.fn() }))
 vi.mock('../src/preload-mandatory-overlay.ts', () => ({ installMandatoryUpdateOverlay: vi.fn() }))
 
 beforeEach(() => { vi.stubGlobal('process', { ...process, isMainFrame: true }) })
+
+it('returns browser authorization to the owned application window', async () => {
+  vi.stubGlobal('location', new URL('dsh-app://app/'))
+  await import('../src/preload-app.ts')
+  const api = electron.contextBridge.exposeInMainWorld.mock.calls.find(([name]) => name === 'dshDesktop')?.[1] as DshDesktopProductApi
+  await api.activate?.()
+  expect(electron.ipcRenderer.invoke).toHaveBeenCalledWith(DESKTOP_IPC.activate)
+})
 afterEach(() => { document.body.replaceChildren(); vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.clearAllMocks(); vi.resetModules() })
 
 it('reads only native login API-key presence through the onboarding bridge', async () => {
@@ -169,14 +177,14 @@ it('moves welcome-entry focus to the document without changing keyboard tab orde
   } finally { dom.window.close() }
 })
 
-it.each(['win32', 'darwin'] as const)('installs the embedded mandatory UI only in the Windows app document (%s)', async (platform) => {
+it.each(['win32', 'darwin'] as const)('does not request a mandatory update service when the product disables managed updates (%s)', async (platform) => {
   vi.stubGlobal('process', { ...process, platform })
   for (const url of ['dsh-app://app/', 'dsh-app://shell/mandatory-update.html', 'https://example.com/']) {
     vi.resetModules()
     vi.mocked(installMandatoryUpdateOverlay).mockClear()
     vi.stubGlobal('location', new URL(url))
     await import('../src/preload-app.ts')
-    expect(installMandatoryUpdateOverlay).toHaveBeenCalledTimes(platform === 'win32' && url === 'dsh-app://app/' ? 1 : 0)
+    expect(installMandatoryUpdateOverlay).not.toHaveBeenCalled()
   }
 })
 

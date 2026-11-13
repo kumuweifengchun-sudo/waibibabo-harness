@@ -61,10 +61,11 @@ kind: "package-reference"
 
 ### 调整压缩开始的时机
 
-所有设置都可选。设上下文窗口为 `W`、生效请求输出上限为 `O`、余量为 `B`，默认触发阈值为 `floor(min(W × 0.8, W − O − B))`，其中 `B = 65,536` tokens。逐字保留的近期历史预算仍为 `W − O` 的 16%。下表列出全部设置；生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-compaction-basic)还包含字段类型。
+所有设置都可选。设上下文窗口为 `W`、生效输出上限为 `O`、余量为 `B`，触发阈值为 `floor(min(W × thresholdRatio, W − O − B))`。没有显式余量或摘要输出设置时，`adaptiveBudget` 默认启用：`B` 为 65,536 与 `floor((W − O) × (1 − thresholdRatio))` 的较小值；摘要输出也受路由输出预留及可保留上下文空间限制。显式预算默认保持固定行为。逐字保留近期 `W − O` 的 16%；[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-compaction-basic)包含所有字段类型。
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
+| `adaptiveBudget` | 未显式设置余量或摘要输出时启用 | 按路由预算调整余量和摘要输出；设为 false 使用固定预算。 |
 | `thresholdRatio` | `0.8` | 用于 `floor(min(W × thresholdRatio, W − O − headroomTokens))` 的窗口比例。 |
 | `headroomTokens` | `65536` | 路由请求输出预留之外的额外压力余量；必须为非负整数。 |
 | `retainRatio` | `0.16` | 以 `W − O` 的一部分表示逐字保留的近期对话；与 `retainTokens` 互斥。 |
@@ -87,7 +88,7 @@ kind: "package-reference"
 
 在提供方或模型发生变化的请求写入日志前，自动压缩会按目标模型的容量、输出预留和压力策略测量现有历史。需要压缩时，使用原路由模型及其摘要设置；显式配置的摘要目标仍然优先。只有历史降到目标阈值以下，才会继续目标请求。失败会报告 `MODEL_SWITCH_COMPACTION_FAILED`，并保留原请求头；可选择更大窗口的模型，或修正报告的原因后重试。即使后续尝试失败，已经完成的裁剪或压缩仍保留在会话中。检查在下次请求准备时执行，`auto: false` 会禁用它。
 
-即使历史很短，目标也必须有已注册的适配器、已声明的上下文容量和有效的压力预算。默认 65,536 token 的余量无法适配同等或更小的窗口；请按上例为该路由设置 `modelPolicies[].headroomTokens`。迁移方法见[升级指南](../../../docs/upgrade-guide/v0.2.1-alpha.4/model-switch-compaction/guide.zh.md)。
+即使历史很短，目标也必须有已注册的适配器、已声明的上下文容量和有效的压力预算。自适应默认值支持较小窗口；显式固定余量耗尽输入预算时仍报告配置错误。模型切换迁移见[升级指南](../../../docs/upgrade-guide/v0.2.1-alpha.4/model-switch-compaction/guide.zh.md)。
 
 ### 通过 /compact 按需压缩
 

@@ -1434,7 +1434,8 @@ export function WorkspaceBrowser({
 
       {workspaceActionRequest !== null && <WorkspaceDialogs key={`${workspaceActionRequest.action}/${workspaceActionRequest.workspaceId}`}
         request={workspaceActionRequest} workspaces={workspaces} renameWorkspace={renameWorkspace} deleteWorkspace={deleteWorkspace}
-        settleWorkspaceAction={settleWorkspaceAction} t={t} />}
+        directoryFlowAvailable={directoryFlowAvailable} renderDirectoryFlow={owner => renderSlot('sidebar.workspaces.directoryFlow', owner)}
+        settleWorkspaceAction={settleWorkspaceAction} useWorkspaceAccess={useWorkspaceAccess} t={t} />}
     </div>
   )
 }

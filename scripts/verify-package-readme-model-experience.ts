@@ -8,6 +8,7 @@
 import { existsSync, globSync, readFileSync } from 'node:fs'
 import { relative, resolve, sep } from 'node:path'
 import { markdownHeadingLines, markdownProseLines, parseMarkdown, type MarkdownProseLine } from './markdown.ts'
+import { productDocValidationText } from './product-chinese-docs.ts'
 
 const root = resolve(import.meta.dirname, '..')
 const HEADING = '## Model Experience'
@@ -49,6 +50,7 @@ const NO_MODEL_EXPERIENCE_SECTION: Readonly<Record<string, string>> = {
  * blocks. A package moves on or off this list with its context behavior.
  */
 const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
+  'packages/credentials/sub2api-account': { kind: 'none', reason: 'Account credentials and model routing do not add model-visible text.' },
   'packages/client/ui-context-menu': { kind: 'none', reason: 'Client menu presentation and contributed callbacks add no model input.' },
   'packages/client/ui-file-actions': { kind: 'none', reason: 'Explicit user file saves and clipboard operations add no model input.' },
   'packages/client/ui-entry-customization': { kind: 'none', reason: 'Controls browser launchers and prepares a reviewable Creator draft without submitting model input.' },
@@ -391,7 +393,7 @@ for (const packageJson of packageJsons) {
     continue
   }
 
-  const text = readFileSync(abs, 'utf8')
+  const text = productDocValidationText(readme, readFileSync(abs, 'utf8'))
   const rawLines = text.split('\n')
   const tree = parseMarkdown(text)
   const lines = markdownProseLines(text, tree)

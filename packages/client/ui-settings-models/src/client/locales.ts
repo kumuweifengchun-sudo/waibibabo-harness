@@ -274,7 +274,7 @@ export const zh: { [Key in keyof typeof en]: string } = {
   create: '创建提供商',
   creating: '创建中\u2026',
   welcomeTitle: '预览版说明',
-  welcomeBody: 'DeepSeek Harness 目前的 0.2 版本仍处于预览阶段，还有许多地方需要持续改进和打磨，希望听取广大开发者和用户的反馈建议。现在，新的桌面端面向广泛用户，开发者相关的进阶功能可在配置中开启使用。预计 DeepSeek Harness 的产品功能以及插件 API 都会继续快速迭代、持续演化，并逐渐趋于稳定。\n\n我们期待与全球用户和开发者一起，在开源、可复用、可组合的基础设施之上，共同探索智能上限。欢迎大家用 DeepSeek Harness 将想法变成现实，与社区一起丰富插件生态。',
+  welcomeBody: '欢迎使用 WSS。你可以在本机处理任务，通过模型设置、插件、Agent 预设和本地 Skills 调整工作方式。',
   welcomeContinue: '继续',
   welcomeError: '暂时无法保存确认状态，请重试。',
   onboardingTitle: '添加一个 API Key 开始使用',

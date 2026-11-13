@@ -25,7 +25,7 @@ export const zh = {
   'effort.providerDefault': 'Default',
   'status.loading': '正在刷新模型列表…',
   'error.action': '模型操作失败：{message}',
-  'error.sessionInUse': '当前会话已被占用，可能是其他正在运行的 DSH 导致的（如其他 dsh web、桌面端），请退出其他正在运行的 DSH 后重试。',
+  'error.sessionInUse': '当前会话已被占用，可能是其他正在运行的 WSS 导致的（如其他 dsh web、桌面端），请退出其他正在运行的 WSS 后重试。',
   'action.reload': '重新加载',
   'warning.groupLoad': '{name} 加载失败：{message}',
   'search.placeholder': '搜索模型…',

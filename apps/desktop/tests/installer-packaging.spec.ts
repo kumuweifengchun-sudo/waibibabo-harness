@@ -1,9 +1,9 @@
-import { readInstallerLocales } from '../scripts/installer-locales.mjs'
 import { tmpdir } from 'node:os'
 import { readFileSync } from 'node:fs'
 import { Arch, Platform } from 'electron-builder'
 import { AppInfo, Packager } from 'app-builder-lib'
 import { expandMacro } from 'app-builder-lib/out/util/macroExpander.js'
+import { getWindowsInstallationDirName } from 'app-builder-lib/out/targets/targetUtil.js'
 import { describe, expect, it, vi } from 'vitest'
 
 const { execute, write } = vi.hoisted(() => ({ execute: vi.fn(async () => undefined), write: vi.fn(async () => undefined) }))
@@ -18,12 +18,14 @@ vi.mock('node:fs/promises', async importOriginal => ({
 }))
 
 describe('installer preparation preserves application dependencies', () => {
-  it.each(['win32', 'darwin'] as const)('rejects a missing production policy before signing on %s', async (platform) => {
+  it.each(['win32', 'darwin'] as const)('omits upstream policy and feeds for the desktop product on %s', async (platform) => {
     const { createElectronBuilderConfig } = await import('../scripts/electron-builder-config.mjs')
-    expect(() => createElectronBuilderConfig({ DSH_DESKTOP_APP_ID: 'com.example.installer',
+    const config = createElectronBuilderConfig({ DSH_DESKTOP_APP_ID: 'com.example.installer', DSH_DESKTOP_UNSIGNED: '1',
       DSH_DESKTOP_AUTO_UPDATE_ENV: 'production',
       DSH_DESKTOP_MANDATORY_UPDATE_TEST_ORIGIN: 'https://test.example.com',
-    }, platform, 'x64')).toThrow('DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN')
+    }, platform, 'x64')
+    expect(config.extraMetadata).not.toHaveProperty('dshMandatoryUpdatePolicy')
+    expect(config.publish).toBeNull()
   })
   it.each(['win32', 'darwin'] as const)('preserves installer metadata and dependency ownership on %s', async (platform) => {
     execute.mockClear()
@@ -44,26 +46,31 @@ describe('installer preparation preserves application dependencies', () => {
     try {
       const { createElectronBuilderConfig } = await import('../electron-builder.config.mjs')
       const config = createElectronBuilderConfig(env, platform, 'x64')
+      expect(config.extraMetadata.version).toBe('0.1.0')
       const metadataPackager = new Packager({ projectDir: tmpdir() })
       const metadata: unknown = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+      if (typeof metadata !== 'object' || metadata === null) throw new Error('Expected a package manifest object')
       Object.defineProperties(metadataPackager, {
         config: { value: config },
-        metadata: { value: metadata },
+        metadata: { value: { ...metadata, ...config.extraMetadata } },
       })
       const appInfo = new AppInfo(metadataPackager, undefined)
-      expect(appInfo.companyName).toBe('Hangzhou DeepSeek Artificial Intelligence Co., Ltd.')
-      expect(appInfo.copyright).toBe(`Copyright © ${new Date().getFullYear()} DeepSeek Harness`)
+      expect(appInfo.companyName).toBe('Waibibabo Harnesss')
+      expect(appInfo.version).toBe('0.1.0')
+      expect(appInfo.updaterCacheDirName).toBe('waibibabo-harnesss-updater')
+      expect(appInfo.copyright).toBe(`Copyright © ${new Date().getFullYear()} Waibibabo Harnesss`)
       if (platform === 'win32') {
-        expect(expandMacro(config.nsis.uninstallDisplayName, null, appInfo, {}, false)).toBe('DeepSeek Harness')
-        expect(config.nsis.installerLanguages).toEqual(readInstallerLocales().map(locale => locale.id))
+        expect(expandMacro(config.nsis.uninstallDisplayName, null, appInfo, {}, false)).toBe('Waibibabo Harnesss')
+        expect(config.nsis.installerLanguages).toEqual(['zh_CN'])
+        expect(getWindowsInstallationDirName(appInfo, true)).toBe('Waibibabo Harnesss')
       }
       const aboutIcon = config.extraResources.find(resource => resource.to === 'icon.png')
       expect(aboutIcon).toBeDefined()
-      expect(readFileSync(aboutIcon!.from)).toEqual(readFileSync(new URL('../resources/icon-windows.png', import.meta.url)))
+      expect(readFileSync(aboutIcon!.from)).toEqual(readFileSync(new URL('../../../packages/bundle/waibibabo/src/client/assets/icon.png', import.meta.url)))
       // Only the Windows package carries the tray bitmaps; macOS keeps the Dock.
       const trayIcon = config.extraResources.find(resource => resource.to === 'tray.ico')
       if (platform === 'win32') {
-        expect(readFileSync(trayIcon!.from)).toEqual(readFileSync(new URL('../resources/tray-windows.ico', import.meta.url)))
+        expect(readFileSync(trayIcon!.from)).toEqual(readFileSync(new URL('../resources/waibibabo/tray.ico', import.meta.url)))
       } else {
         expect(trayIcon).toBeUndefined()
       }
@@ -81,7 +88,8 @@ describe('installer preparation preserves application dependencies', () => {
       expect(write).toHaveBeenCalledTimes(platform === 'win32' ? 1 : 0)
       if (platform === 'win32') {
         expect(write).toHaveBeenCalledWith(expect.stringMatching(/installer-ui[\\/]strings\.nsh$/u),
-          expect.stringContaining('LangString INSTALLER_INSTALL ${LANG_JAPANESE}'), 'utf8')
+          expect.stringContaining('LangString INSTALLER_INSTALL ${LANG_SIMPCHINESE}'), 'utf8')
+        expect(write).not.toHaveBeenCalledWith(expect.anything(), expect.stringContaining('${LANG_JAPANESE}'), 'utf8')
       }
     } finally {
       vi.unstubAllEnvs()
@@ -99,7 +107,7 @@ describe('installer preparation preserves application dependencies', () => {
       DSH_DESKTOP_TARGET_ARCH: 'x64',
       DSH_DESKTOP_UNSIGNED: '1',
     }, 'win32', 'x64')
-    expect(config.artifactName).toBe('deepseek-harness-${version}-${os}-${arch}-unsigned.${ext}')
+    expect(config.artifactName).toBe('waibibabo-harnesss-${version}-${os}-${arch}-unsigned.${ext}')
   })
 
   it('packages every preload entry point the shell loads', async () => {

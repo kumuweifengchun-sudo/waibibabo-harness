@@ -66,6 +66,20 @@ function faceOf(slots: SlotRegistry) {
 }
 
 describe('locale apply', () => {
+  it('omits language selection when the native product fixes Chinese', async () => {
+    const b = await bench('en')
+    declareItems(b.slots)
+    vi.stubGlobal('__DSH_LOCALE__', {
+      read: () => Promise.resolve({ languages: ['en-US'], preference: 'en', fixedLocale: 'zh' }), onChange: vi.fn(),
+    })
+    try {
+      await b.ctx.plugin({ inject: [...inject], apply }).await()
+      expect(b.ctx.locale.getSnapshot().active).toBe('zh')
+      expect(b.slots.entries(SLOT).some(entry => entry.component === LanguageRow)).toBe(false)
+      expect(b.mutate).not.toHaveBeenCalled()
+    } finally { await b.ctx.fiber.dispose() }
+  })
+
   it.each(['resolve', 'reject'] as const)('contains a late native initialization %s after unloading', async (outcome) => {
     const b = await bench()
     const ready = Promise.withResolvers<unknown>()

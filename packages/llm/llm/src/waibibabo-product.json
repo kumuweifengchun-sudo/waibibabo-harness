@@ -1,0 +1,13 @@
+{
+  "name": "Waibibabo Harnesss",
+  "shortName": "WSS",
+  "userAgentProduct": "wss",
+  "version": "0.1.0",
+  "latinName": "Waibibabo Harnesss",
+  "slug": "waibibabo-harnesss",
+  "appId": "com.waibibabo.desktop",
+  "homeDirectory": ".waibibabo",
+  "platformAccounts": true,
+  "chineseOnly": true,
+  "managedUpdates": false
+}

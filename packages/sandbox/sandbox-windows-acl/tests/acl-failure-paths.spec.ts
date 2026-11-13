@@ -357,6 +357,8 @@ describe('mergeAndApply failure paths', () => {
     }
     expect(caught).toBeInstanceOf(Win32Error)
     expect((caught as Win32Error).api).toBe('SetNamedSecurityInfoW')
+    expect((caught as Win32Error).win32Code).toBe(5)
+    expect((caught as Win32Error).message).toMatchInlineSnapshot('"SetNamedSecurityInfoW failed (Win32 5): grantWrite(C:\\granted)；Windows 拒绝配置工作区沙箱权限。目录需要修改访问规则（WRITE_DAC）与完整性标签（WRITE_OWNER）的权限，仅文件写入权限不足。请检查目录“属性 → 安全”，或使用当前账号拥有完全控制权限的工作区。本次命令尚未启动，沙箱保护仍保持启用。"')
     expect(localFree).toHaveBeenCalledWith(9n) // merged DACL
     expect(localFree).toHaveBeenCalledWith(11n) // label ACL
   })

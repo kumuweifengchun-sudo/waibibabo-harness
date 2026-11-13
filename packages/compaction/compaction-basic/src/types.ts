@@ -14,6 +14,8 @@ import type { LlmCallConfig } from '@deepseek-ai/dsh-llm'
 
 /** Policy fields shared by the default policy and exact model overrides. */
 export interface CompactionPolicyConfig {
+  /** Scale default headroom and summary output to model budgets; defaults true unless headroom or summary maxTokens is explicit. */
+  adaptiveBudget?: boolean
   /** Window fraction for pressure; capped at context window minus reserved output and `headroomTokens`. Defaults to `0.8`. */
   thresholdRatio?: number
   /** Additional pressure headroom beyond the routed output reservation. Non-negative integer; defaults to `65536`. */
@@ -57,6 +59,7 @@ export type ResolvedRetention =
 
 /** Validated policy fields shared before and after exact-target matching. */
 interface ResolvedPolicyFields {
+  readonly adaptiveBudget: boolean
   readonly thresholdRatio: number
   readonly headroomTokens: number
   readonly summarizationProvider: string

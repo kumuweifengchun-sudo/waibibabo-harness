@@ -75,6 +75,25 @@ function unpublishedAgent(ctx: Context, meta: SessionHeader): Agent {
 }
 
 describe('ApiSession identity failures', () => {
+  it.each([true, false])('creates a fresh Session when a workspace primary changes (live=%s)', async (live) => {
+    const { ctx, agents } = await harness()
+    const root = mkdtempSync(join(tmpdir(), 'wss-primary-change-'))
+    tempDirs.push(root)
+    const old = header('old-draft', root)
+    if (live) await ctx.agents.register(agent(ctx, old))
+    else providePersistence(ctx, { list: () => Promise.resolve([old]), inspect: () => Promise.resolve({ meta: old, events: [] }) })
+    const next = join(root, 'new-primary')
+    vi.spyOn(ctx.agents, 'create').mockImplementation(async (options) => {
+      if (options.sessionId === undefined) throw new Error('creation must mint an identity')
+      return { agent: agent(ctx, header(options.sessionId, next)), dispose: async () => {} }
+    })
+    const created = await agents.createSession({ sessionId: old.id, cwd: next, mintOnCwdChange: true, reusable: () => true })
+    expect(created.agent.id).not.toBe(old.id)
+    expect(created.agent.session.header.cwd).toBe(next)
+    expect(old.cwd).toBe(root)
+    await expect(agents.createSession({ sessionId: old.id, cwd: next, reusable: () => true })).rejects.toBeInstanceOf(ApiSessionCwdConflict)
+  })
+
   it('describes cwd conflicts with and without a recorded cwd', () => {
     expect(new ApiSessionCwdConflict(SessionId('missing-cwd'), '/wanted', undefined).message)
       .toContain('records no cwd')

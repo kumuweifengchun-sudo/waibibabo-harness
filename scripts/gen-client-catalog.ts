@@ -435,9 +435,10 @@ function firstSentence(doc: string): string {
   return (match?.[1] ?? flat).trim()
 }
 
-/** Render one value as a single-quoted TypeScript literal. */
+/** Render a single-quoted TypeScript literal with platform-independent line endings. */
 function quote(value: string): string {
-  return `'${value.replaceAll('\\', '\\\\').replaceAll("'", "\\'").replaceAll('\n', '\\n')}'`
+  const normalized = value.replace(/\r\n?/gu, '\n')
+  return `'${normalized.replaceAll('\\', '\\\\').replaceAll("'", "\\'").replaceAll('\n', '\\n')}'`
 }
 
 /** Render a readonly string-array literal. */

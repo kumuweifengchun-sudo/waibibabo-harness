@@ -25,6 +25,8 @@ English | [中文](README.zh.md)
 <a id="use-this-package"></a>
 ## Use this package
 
+Custom account providers can construct `PiAiAdapter` with explicit per-request authentication. The `./config` export supplies `resolveProfiles` and its profile types; `./auth` supplies credential-store and authentication-context adapters. These helpers do not register routes or read deployment defaults on their own.
+
 Mount this plugin when a composition routes model requests through pi-ai's provider catalogs or through gateways that pi-ai's installed catalog does not describe. The `providers` dictionary is the whole configuration surface: each key is the provider route name a request selects with `GenerateOptions.provider`.
 
 The adapter accepts the LLM service's [request-only user inputs](../llm/README.md#use-this-package) alongside durable history. User identity and attribution do not enter pi-ai content; assistant replay metadata and tool-call correlation remain attached to durable messages.
@@ -78,8 +80,8 @@ Each profile may set a `retryPolicy`; omission uses normal mode with five retrie
 |---|---|---|
 | `apiKeyEnv` | absent | Credential reference resolved per request; omission defers to pi-ai ambient discovery |
 | `displayName` | provider name | Label shown by selector surfaces |
-| `api` | catalog protocol | Wire protocol; only needed for routes the catalog does not supply |
-| `baseURL` | catalog endpoint | Endpoint of every model on the route |
+| `api` | catalog protocol | Default wire protocol; an individual model may override it |
+| `baseURL` | catalog endpoint | Default endpoint; an individual model may override it |
 | `models` | installed catalog | Replaces the route's catalog wholesale; each entry defaults from the installed model |
 | `modelOverrides` | none | Reshapes individual installed-catalog models without replacing the rest |
 | `compat` | catalog detection | Wire-compatibility switches for unrecognized endpoints |
@@ -99,6 +101,8 @@ The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-a
 A provider pi-ai ships a login for can be signed into through the harness authorization seam: the flow offers OAuth or an interactive key prompt (a key is typed into pi-ai's own login prompt, not into the settings form), and the resulting credential is stored in the harness credential store at `llm-pi-ai/<provider id>`. The stored sign-in authenticates its route beneath any `apiKeyEnv` override and refreshes itself under the store's cross-process lock; signing out deletes the stored record. A hand-declared route key outside the record grammar — a lowercase hyphenated identifier — cannot be signed into, because a record write for it refuses with `LlmError('UNSTORABLE_PROVIDER_ID')`; such a route authenticates through `apiKeyEnv` or ambient provider settings instead.
 
 ### Resolve the model catalog
+
+Each model entry may set `api` and `baseURL` independently. Custom routes and explicit model-level protocol overrides support `openai-completions`, `openai-responses`, `anthropic-messages`, and `google-generative-ai`; unsupported protocols fail during configuration. This allows one gateway route to serve mixed model families. The Anthropic SDK expects the origin as its base URL, OpenAI APIs expect the `/v1` prefix, and the Gemini SDK expects `/v1beta`. Protocol changes affect subsequent prepared calls; an existing prepared call retains its original protocol and endpoint.
 
 A profile's `models` list replaces the route's installed catalog rather than extending it; each entry defaults its unset fields from the installed model of the same id, so narrowing a route to two models, correcting one capacity, or adding a model newer than the installed catalog are one-line edits. `modelOverrides` reshapes individual installed-catalog models without that cost — correct one model, keep the other thirty-seven — and is refused when set beside a `models` list, on a hand-declared route, or naming a model the catalog does not describe, because a silently unchanged model would be a typo someone hunts for later.
 
@@ -146,6 +150,8 @@ Initial prompt text and active tools use pi-ai's `Context.systemPrompt` and `Con
 
 <a id="request-headers"></a>
 ### Request headers
+
+Direct `PiAiAdapter` consumers can supply `responsesFetch` to bind a Fetch-compatible transport to each prepared OpenAI Responses request. It receives the same immutable routing metadata as header contributors; other protocols retain their native SDK transport. The consumer owns cancellation and connection disposal. The SDK still serializes full requests, decodes events, and supplies replay metadata and usage; HTTP-shaped responses from the transport must preserve those semantics.
 
 Plugins can contribute model-hidden transport metadata through the synchronous `llm-pi-ai/request-headers` waterfall. Each inference call supplies immutable routing metadata (`PiAiRequestHeaderContext`) and a fresh `Headers` copy of its profile headers; when configured names differ only in capitalization, the last entry wins. The endpoint belongs to the prepared model, so concurrent calls and configuration changes cannot exchange header state. Listeners edit that copy, call `next()`, and release their references on return; `ctx.on()` removes their registration when the owning plugin unloads. Harness attribution is applied after all contributors, and pi-ai receives a detached header record.
 

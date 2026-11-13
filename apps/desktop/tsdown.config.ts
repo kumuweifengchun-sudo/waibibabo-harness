@@ -22,10 +22,10 @@ const preloadImports = { packages: new Set(['electron', 'events', 'timers', 'url
 
 const REPOSITORY_ROOT = fileURLToPath(new URL('../..', import.meta.url))
 
-/** Use the client environment this build already received, otherwise the repository's own version and commit. */
+/** Desktop always embeds its product version; the bundled runtime retains its workspace version. */
 const clientEnvironment = resolveClientBuildEnvironment(process.env.DSH_CLIENT_VERSION === undefined
   ? repositoryClientBuildEnvironment(REPOSITORY_ROOT, process.env)
-  : process.env)
+  : process.env, 'waibibabo')
 const clientVersion = clientEnvironment.DSH_CLIENT_VERSION
 if (clientVersion === undefined) throw new Error('desktop build: the client environment carries no DSH_CLIENT_VERSION')
 

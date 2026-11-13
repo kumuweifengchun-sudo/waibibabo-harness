@@ -107,6 +107,33 @@ describe.skipIf(!isWin32 || !pwshAvailable())('windows-acl runner', () => {
     expect(existsSync(join(writableDir, 'child-wrote.txt'))).toBe(true)
   }, 30_000)
 
+  it('grants separate folder capabilities and excludes removed roots from the next process', () => {
+    const back = join(scratchRoot, 'backend')
+    const mobile = join(scratchRoot, 'mobile')
+    mkdirSync(back)
+    mkdirSync(mobile)
+    const quote = (path: string) => `'${path.replaceAll("'", "''")}'`
+    const write = (path: string) => `Set-Content -LiteralPath ${quote(path)} -Value ok -ErrorAction Stop;`
+    const command = (probe: string) => ['--', resolvePwshPath(), '-NoLogo', '-NonInteractive', '-NoProfile', '-Command', probe]
+    const common = ['--temp', isolatedTemp, '--mode', 'workspace-write']
+    const first = runRunner(['--workspace', writableDir, ...common, '--writable-root', back, '--writable-root', mobile,
+      ...command([writableDir, back, mobile].map(path => write(join(path, 'multi-allowed.txt'))).join(''))])
+    expect(first.status, first.stderr).toBe(0)
+    for (const path of [writableDir, back, mobile]) expect(existsSync(join(path, 'multi-allowed.txt'))).toBe(true)
+    const denied = join(back, 'removed.txt')
+    const second = runRunner(['--workspace', writableDir, ...common, '--writable-root', mobile,
+      ...command(`try{${write(denied)}'UNEXPECTED'}catch{'REMOVED-DENIED'};${write(join(mobile, 'still-allowed.txt'))}`)])
+    expect(second.status, second.stderr).toBe(0)
+    expect(second.stdout).toContain('REMOVED-DENIED')
+    expect(existsSync(denied)).toBe(false)
+    const oldPrimary = join(writableDir, 'old-primary-denied.txt')
+    const third = runRunner(['--workspace', back, ...common,
+      ...command(`try{${write(oldPrimary)}'UNEXPECTED'}catch{'OLD-PRIMARY-DENIED'};${write(join(back, 'new-primary.txt'))}`)])
+    expect(third.status, third.stderr).toBe(0)
+    expect(third.stdout).toContain('OLD-PRIMARY-DENIED')
+    expect(existsSync(oldPrimary)).toBe(false)
+  }, 90_000)
+
   it('read-only: no write-SID grants — workspace/temp writes denied, reads and $null redirection fine, CIM availability follows the caller token', () => {
     const probe = [
       "$ErrorActionPreference='SilentlyContinue';",

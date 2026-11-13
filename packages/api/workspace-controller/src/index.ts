@@ -17,6 +17,7 @@ import type {
   WorkspaceCreateValue,
   WorkspaceDeleteRequest,
   WorkspaceDeleteValue,
+  WorkspaceEditRequest,
   WorkspaceFollowFrame,
   WorkspaceId,
   WorkspaceInsertBeforeRequest,
@@ -119,6 +120,16 @@ export class WorkspaceController extends TypertRemoteService {
   @Remote('rename')
   rename(request: WorkspaceRenameRequest): Promise<WorkspaceValue> {
     return this.commands.rename(request)
+  }
+
+  /**
+   * Save the workspace title and directory grants. This action is separate from rename-only access.
+   * @param request - workspace identity, title, and authorized directories, primary first.
+   * @returns the updated workspace projection.
+   */
+  @Remote('edit')
+  edit(request: WorkspaceEditRequest): Promise<WorkspaceValue> {
+    return this.commands.edit(request)
   }
 
   /**

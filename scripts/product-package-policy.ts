@@ -16,6 +16,8 @@ export interface ProductPackagePolicy {
  * Optional integrations may be reached by an optional bundle without becoming default capabilities.
  */
 export const PRODUCT_PACKAGE_POLICY: Readonly<Record<string, ProductPackagePolicy>> = {
+  'packages/bundle/waibibabo': { category: 'optional', reason: 'Selected by the Waibibabo desktop composition, outside the shared CLI and Web templates.' },
+  'packages/credentials/sub2api-account': { category: 'optional', reason: 'Platform account integration selected by the Waibibabo desktop bundle.' },
   'packages/core/agent-tool-presentation': { category: 'optional', reason: 'Deprecated selector retained for existing executor configurations.' },
   'packages/browser-use/browser-use': { category: 'optional', reason: 'Service definition used by explicitly selected browser providers.' },
   'packages/computer-use/computer-use': { category: 'optional', reason: 'Service definition used by explicitly selected computer providers.' },

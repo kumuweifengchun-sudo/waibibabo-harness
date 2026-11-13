@@ -9,6 +9,20 @@ import type { LocaleSettings } from '../src/locale-settings.ts'
 afterEach(() => { vi.unstubAllGlobals() })
 
 describe('native locale initialization', () => {
+  it('keeps a native product language despite saved preferences and later language registration', async () => {
+    const ctx = new Context()
+    const host = stubConfigForm<LocaleSettings>()
+    try {
+      const locale = new LocaleRuntime(ctx, host.scope, { languages: ['en-US'], preference: 'en', fixedLocale: 'zh' })
+      locale.addLanguage({ id: 'ja', label: '日本語', fallback: 'en' })
+      expect(locale.getSnapshot().active).toBe('zh')
+      expect(locale.getSnapshot().locales.map(value => value.id)).toEqual(['zh'])
+      expect(() =>{  locale.setLocale('en') }).toThrow('native product fixes')
+      locale.setLocale('zh')
+      expect(host.set).not.toHaveBeenCalled()
+    } finally { await ctx.fiber.dispose() }
+  })
+
   it('reports a failed native read instead of silently choosing a language', async () => {
     const ctx = new Context()
     const error = new Error('native settings unavailable')
@@ -68,7 +82,8 @@ describe('native locale initialization', () => {
   it('validates the preload response before reading its fields', () => {
     expect(parseLocaleBootstrap({ languages: ['en-US'], preference: null })).toEqual({ languages: ['en-US'], preference: null })
     expect(parseLocaleBootstrap({ languages: [], preference: 'zh' }).preference).toBe('zh')
-    for (const value of [null, {}, { languages: 'en', preference: null }, { languages: [42], preference: null }, { languages: [], preference: 42 }]) {
+    expect(parseLocaleBootstrap({ languages: [], preference: null, fixedLocale: 'zh' }).fixedLocale).toBe('zh')
+    for (const value of [null, {}, { languages: 'en', preference: null }, { languages: [42], preference: null }, { languages: [], preference: 42 }, { languages: [], preference: null, fixedLocale: 'invalid' }]) {
       expect(() => parseLocaleBootstrap(value)).toThrow('invalid native initialization data')
     }
   })

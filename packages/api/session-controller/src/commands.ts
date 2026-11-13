@@ -136,6 +136,7 @@ export class SessionCommandController {
       created = await this.agents.createSession({
         ...(request.sessionId === undefined ? {} : { sessionId: request.sessionId }),
         cwd,
+        ...(workspace === undefined ? {} : { mintOnCwdChange: true }),
         ...(request.agentPreset === undefined ? {} : { agentPreset: request.agentPreset }),
         reusable: sessionId => !this.ctx.workspaceRegistry.archivedSessionIds.includes(sessionId)
           && (workspace === undefined || workspace.sessionIds.includes(sessionId)),
@@ -281,7 +282,7 @@ export class SessionCommandController {
         seed,
         inheritedEventCount: SessionLogOffset(boundary + 1),
         meta: {
-          ...(source.header.cwd === undefined ? {} : { cwd: source.header.cwd }),
+          ...(workspace !== undefined ? { cwd: workspace.path } : source.header.cwd === undefined ? {} : { cwd: source.header.cwd }),
           isSeeded: true,
           ...(composition.agentPreset === undefined
             ? {}

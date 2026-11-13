@@ -1,9 +1,11 @@
 /** DeepSeek `GET /models` listing: one authenticated request and per-entry decoding. */
-import { APP_IDENTITY, attributionHeaders, LlmError } from '@deepseek-ai/dsh-llm'
+import { attributionHeaders, LlmError } from '@deepseek-ai/dsh-llm'
 import type { LlmModelBadge, LlmModelBadgeTone, ModelModality } from '@deepseek-ai/dsh-llm'
 import { timeoutOf } from '@deepseek-ai/dsh-timeout'
 
 const LISTED_MODALITIES = ['text', 'image'] as const satisfies readonly ModelModality[]
+// DeepSeek's Messages compatibility metadata names the transport, independently of product branding.
+const CLIENT_ID = 'deepseek-harness'
 const BADGE_TONES = ['neutral', 'info', 'success', 'warning'] as const satisfies readonly LlmModelBadgeTone[]
 const LANGUAGE_ID = /^[a-z]{2,8}(?:-[a-z0-9]{1,8})*$/u
 const UNREADABLE_BADGE_CHARACTER = /[\p{Cc}\p{Zl}\p{Zp}\p{Bidi_Control}]/u
@@ -61,12 +63,12 @@ export interface ListingEntry {
   readonly id: string
   /** Display name, when the entry declares a non-empty one. */
   readonly name?: string
-  /** Requirement declared under `client_requirements[APP_IDENTITY.product]`. */
+  /** Requirement declared under `client_requirements["deepseek-harness"]`. */
   readonly requirement: ClientRequirement
   /** Declared capabilities. */
   readonly capabilities: ListedCapabilities
   /**
-   * Selector badge declared under `client_metadata[APP_IDENTITY.product].badge`; absent when the
+   * Selector badge declared under `client_metadata["deepseek-harness"].badge`; absent when the
    * entry declares none, and never a reason to hide the entry.
    */
   readonly badge?: ListedBadge
@@ -104,7 +106,7 @@ function requirementOf(entry: Fields): ClientRequirement {
   if (entry.client_requirements === undefined) return { kind: 'none' }
   const requirements = fieldsOf(entry.client_requirements)
   if (requirements === undefined) return { kind: 'invalid' }
-  const declared = requirements[APP_IDENTITY.product]
+  const declared = requirements[CLIENT_ID]
   if (declared === undefined) return { kind: 'none' }
   const own = fieldsOf(declared)
   if (own === undefined) return { kind: 'invalid' }
@@ -140,7 +142,7 @@ function localizedBadgeText(value: unknown): LlmModelBadge['text'] | undefined {
 }
 
 /** This client's entry in a listing entry's `client_metadata`, as diagnostics name it. */
-const OWN_METADATA = `client_metadata["${APP_IDENTITY.product}"]`
+const OWN_METADATA = `client_metadata["${CLIENT_ID}"]`
 
 /** An optional object field: `undefined` when absent or `null`, `false` when it is not an object. */
 function optionalFields(value: unknown): Fields | undefined | false {
@@ -151,7 +153,7 @@ function badgeOf(entry: Fields): ListedBadge | undefined {
   // `null` at any level declares no badge, like an absent field; this build ships none to fall back on.
   const metadata = optionalFields(entry.client_metadata)
   if (metadata === false) return { kind: 'invalid', reason: 'client_metadata is not an object' }
-  const own = optionalFields(metadata?.[APP_IDENTITY.product])
+  const own = optionalFields(metadata?.[CLIENT_ID])
   if (own === false) return { kind: 'invalid', reason: `${OWN_METADATA} is not an object` }
   const declared = optionalFields(own?.badge)
   if (declared === false) return { kind: 'invalid', reason: `${OWN_METADATA}.badge is not an object` }

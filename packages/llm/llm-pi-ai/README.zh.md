@@ -25,6 +25,8 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
+自定义账号提供方可以使用明确的逐请求认证构造 `PiAiAdapter`。`./config` 导出提供 `resolveProfiles` 及其配置类型；`./auth` 提供凭据存储和认证上下文适配器。这些辅助功能不会自行注册路由或读取部署默认值。
+
 当组合需要通过 pi-ai 的提供方目录、或通过 pi-ai 已安装目录未描述的网关路由模型请求时挂载本插件。`providers` 字典就是整个配置面：每个键都是请求用 `GenerateOptions.provider` 选择的提供方路由名。
 
 适配器接受 LLM 服务的[仅供请求使用的 user 输入](../llm/README.zh.md#use-this-package)，并可将其与持久历史混用。user 身份与来源不会进入 pi-ai 内容；assistant 回放元数据和工具调用关联仍由持久消息携带。
@@ -78,8 +80,8 @@ kind: "package-reference"
 |---|---|---|
 | `apiKeyEnv` | 无 | 按请求解析的凭据引用；省略时交由 pi-ai 环境发现 |
 | `displayName` | 提供方名 | 选择器界面显示的标签 |
-| `api` | 目录协议 | 协议格式；仅目录不提供的路由需要 |
-| `baseURL` | 目录端点 | 路由上所有模型的端点 |
+| `api` | 目录协议 | 默认协议；单个模型可以覆盖 |
+| `baseURL` | 目录端点 | 默认端点；单个模型可以覆盖 |
 | `models` | 已安装目录 | 整体替换路由目录；每个条目从已安装模型取默认值 |
 | `modelOverrides` | 无 | 重塑个别已安装目录模型，而不替换其余模型 |
 | `compat` | 目录检测 | 无法识别端点的协议兼容开关 |
@@ -99,6 +101,8 @@ kind: "package-reference"
 pi-ai 提供登录的提供方可以通过 harness 授权 seam 登录：流程提供 OAuth 或交互式密钥提示（密钥键入 pi-ai 自己的登录提示，而非设置表单），得到的凭据存储在 harness 凭据存储的 `llm-pi-ai/<provider id>` 记录中。存储的登录在其路由的 `apiKeyEnv` 覆盖之下完成认证，并在存储的跨进程锁下自行刷新；退出登录即删除存储记录。落在记录文法之外——小写连字符标识符——的手工声明路由键无法登录，因为对它的记录写入会以 `LlmError('UNSTORABLE_PROVIDER_ID')` 拒绝；这类路由改用 `apiKeyEnv` 或提供方 ambient 设置认证。
 
 ### 解析模型目录
+
+每个模型条目可独立设置 `api` 和 `baseURL`。自定义路由和显式的模型级协议覆盖支持 `openai-completions`、`openai-responses`、`anthropic-messages`、`google-generative-ai`；不支持的协议在配置时拒绝。同一网关路由因此可同时提供不同系列的模型。Anthropic SDK 使用源站作为基址，OpenAI API 使用 `/v1` 前缀，Gemini SDK 使用 `/v1beta`。协议变更对后续准备的请求生效，已准备的请求保留原协议和端点。
 
 profile 的 `models` 列表会替换而非扩展路由的已安装目录；每个条目从同 id 已安装模型取未设置字段的默认值，因此把路由收窄到两个模型、修正一个容量或添加比已安装目录更新的模型都是一行编辑。`modelOverrides` 无需该代价即可重塑个别已安装目录模型——修正一个模型，保留其余三十七个——当它与 `models` 列表并存、位于手工声明路由上、或点名目录未描述的模型时会被拒绝，因为静默不变的模型会成为别人日后寻找的拼写错误。
 
@@ -146,6 +150,8 @@ Config 更新严格验证发生变化的 provider。初始加载将已存储的�
 
 <a id="request-headers"></a>
 ### 请求头
+
+直接使用 `PiAiAdapter` 的调用方可通过 `responsesFetch` 为每次已准备的 OpenAI Responses 请求绑定兼容 Fetch 的传输实现。它接收与请求头贡献器相同的不可变路由元数据；其他协议保留原生 SDK 传输。调用方负责取消与连接清理。SDK 仍序列化完整请求、解析事件并提供回放元数据和用量；传输返回的 HTTP 形式响应必须保留这些语义。
 
 插件可通过同步的 `llm-pi-ai/request-headers` waterfall 贡献模型不可见的传输元数据。每次推理调用提供不可变的路由元数据（`PiAiRequestHeaderContext`）和从 profile 标头复制出的独立 `Headers`；配置名称仅大小写不同时，以最后一个条目为准。端点来自已准备的模型，因此并发调用与配置变更不会交换请求头状态。监听器修改该副本、调用 `next()`，并在返回时释放对它的引用；所属插件卸载时，`ctx.on()` 会移除注册。Harness 的应用标识在所有贡献器之后写入，pi-ai 接收独立的标头记录。
 

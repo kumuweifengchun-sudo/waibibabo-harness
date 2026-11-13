@@ -6,6 +6,8 @@ export interface LocaleBootstrap {
   readonly languages: readonly string[]
   /** Stored locale.preference; null preserves automatic language selection. */
   readonly preference: string | null
+  /** Native product language; when present, preferences cannot change it. */
+  readonly fixedLocale?: 'zh' | 'en'
 }
 
 /** Optional page-global bridge named __DSH_LOCALE__; ordinary browsers omit it. */
@@ -24,8 +26,10 @@ export interface LocaleBridge {
 export function parseLocaleBootstrap(value: unknown): LocaleBootstrap {
   if (typeof value !== 'object' || value === null || !('languages' in value) || !Array.isArray(value.languages)
     || !value.languages.every((language: unknown) => typeof language === 'string')
-    || !('preference' in value) || (value.preference !== null && typeof value.preference !== 'string')) {
+    || !('preference' in value) || (value.preference !== null && typeof value.preference !== 'string')
+    || ('fixedLocale' in value && value.fixedLocale !== 'zh' && value.fixedLocale !== 'en')) {
     throw new TypeError('locale: invalid native initialization data')
   }
-  return { languages: value.languages, preference: value.preference }
+  return { languages: value.languages, preference: value.preference,
+    ...'fixedLocale' in value ? { fixedLocale: value.fixedLocale as 'zh' | 'en' } : {} }
 }

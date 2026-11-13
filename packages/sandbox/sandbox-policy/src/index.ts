@@ -30,6 +30,7 @@ import type { SandboxExecutionPolicy, SandboxMode } from '@deepseek-ai/dsh-sandb
 import type { Session } from '@deepseek-ai/dsh-session'
 import type { ProjectionHandle } from '@deepseek-ai/dsh-session-projection'
 import type {} from '@deepseek-ai/dsh-system-prompt'
+import type {} from '@deepseek-ai/dsh-workspace'
 
 export { SANDBOX_MODES, setSandboxMode } from './session-mode.ts'
 
@@ -96,7 +97,8 @@ export interface Config {
   mode?: SandboxMode
   /**
    * Absolute fallback root for agentless calls and sessions without a cwd (default:
-   * `process.cwd()`). Normal agent calls use their session cwd instead.
+   * `process.cwd()`). Registered workspaces supply their current primary directory;
+   * ungrouped Sessions use their original cwd.
    */
   workspaceRoot?: string
   /**
@@ -112,7 +114,7 @@ export interface Config {
 
 /** Inputs that select the sandbox policy for one capability call. */
 export interface SandboxPolicyRequest {
-  /** Calling session; its immutable cwd becomes the workspace boundary. */
+  /** Calling Session; its workspace supplies current directory grants, with header cwd as the ungrouped fallback. */
   session?: Session
   /** Explicit approved mode override, which outranks session policy. */
   mode?: SandboxMode
@@ -129,7 +131,7 @@ const sandboxModeStateSchema = zod.union([
  * The sandbox-policy service (`ctx.sandboxPolicy`). Owns the deployment
  * default mode, fallback workspace root, and current request-time policy
  * section. Tool layers call {@link resolve} for each execution so a session's
- * mode log and immutable cwd travel together to every enforcing capability.
+ * mode log and current directory grants travel together to every enforcing capability.
  */
 export class SandboxPolicyService extends Service {
   // Inline schema call: the config catalog walks `static Config` statically.
@@ -177,9 +179,12 @@ export class SandboxPolicyService extends Service {
         order: scope.systemPrompt.getContextOrder('SANDBOX_POLICY'),
         text: (context) => {
           const session = context.agent?.session
-          return session === undefined
-            ? ''
-            : renderPolicyContext(this.resolve({ session }))
+          if (session === undefined) return ''
+          const workspace = this.ctx.get('workspaceRegistry')?.forSession(session.header)
+          const directories = workspace !== undefined && (workspace.directories.length > 1 || workspace.path !== session.header.cwd)
+            ? `\nWorkspace folders (primary first): ${JSON.stringify(workspace.directories)}.`
+            : ''
+          return renderPolicyContext(this.resolve({ session })) + directories
         },
       })
     })
@@ -188,18 +193,22 @@ export class SandboxPolicyService extends Service {
   /**
    * Resolve the complete policy for one capability call. An approved explicit
    * mode outranks the session's last `sandbox/mode` event, which outranks the
-   * deployment default. A session cwd is its workspace-write boundary; the
-   * configured root is the fallback for agentless calls and sessions without a
-   * cwd.
+   * deployment default. A registered workspace supplies its current primary and
+   * additional directories, including for subagents. Ungrouped Sessions use
+   * header cwd; agentless calls and cwd-less Sessions use the configured root.
    * @param request - optional session and approved mode override.
    * @returns the fully resolved per-call mode and absolute workspace root.
    */
   resolve(request: SandboxPolicyRequest = {}): SandboxExecutionPolicy {
     const { session } = request
+    const workspace = session === undefined ? undefined : this.ctx.get('workspaceRegistry')?.forSession(session.header)
+    const additionalWritableRoots = resolveAdditionalWritableRoots([
+      ...(this.additionalWritableRoots ?? []), ...(workspace?.directories.slice(1) ?? []),
+    ])
     return {
       mode: request.mode ?? (session === undefined ? undefined : this.overrideOf(session)) ?? this.defaultMode,
-      workspaceRoot: resolveWorkspaceRoot(session?.header.cwd ?? this.workspaceRoot),
-      ...this.additionalWritableRoots === undefined ? {} : { additionalWritableRoots: this.additionalWritableRoots },
+      workspaceRoot: resolveWorkspaceRoot(workspace?.path ?? session?.header.cwd ?? this.workspaceRoot),
+      ...additionalWritableRoots === undefined ? {} : { additionalWritableRoots },
       ...session === undefined ? {} : { sessionId: session.id },
     }
   }

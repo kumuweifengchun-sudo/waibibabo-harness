@@ -27,6 +27,7 @@ export function workspaceView(workspace: Workspace): WorkspaceView {
   return {
     workspaceId: workspace.id,
     path: workspace.path,
+    directories: [...workspace.directories],
     title: workspace.title,
     sessionIds: [...workspace.sessionIds],
     createdAt: workspace.createdAt,
@@ -38,7 +39,8 @@ function changedWorkspaceView(workspaceId: string, value: unknown): WorkspaceVie
   const record: WorkspaceRecord = workspaceRecord.parse(value)
   return {
     workspaceId: WorkspaceId(workspaceId),
-    path: record.path,
+    path: record.directories?.[0] ?? record.path,
+    directories: [...(record.directories ?? [record.path])],
     title: record.title,
     sessionIds: [...record.sessionIds],
     createdAt: record.createdAt,

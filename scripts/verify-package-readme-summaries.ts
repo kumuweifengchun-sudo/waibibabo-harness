@@ -1,4 +1,5 @@
-/** Enforce the English package README Summary entry-length limit. */
+/** Enforce package README summary entry-length limits. */
+import { productDocValidationText } from './product-chinese-docs.ts'
 
 import { globSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -38,6 +39,7 @@ function readKind(source: string): string | undefined {
  * @returns Diagnostics for a missing or oversized Summary.
  */
 export function packageReadmeSummaryErrors(file: string, source: string): string[] {
+  source = productDocValidationText(file, source)
   const summary = h2Body(source, 'Summary')
   if (summary === undefined) return [`${file}: missing \`## Summary\``]
 

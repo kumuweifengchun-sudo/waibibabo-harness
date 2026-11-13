@@ -21,6 +21,16 @@ import {
 import { clientBundle } from '../packages/client/tsdown.client.ts'
 
 const root = resolve(import.meta.dirname, '..')
+
+it('pins the desktop product title and version independently of inherited runtime metadata', () => {
+  expect(resolveClientBuildEnvironment({
+    DSH_CLIENT_COMMIT_HASH: '0123456', DSH_CLIENT_VERSION: '1.2.3',
+    DSH_CLIENT_TITLE: 'DeepSeek Harness', DSH_CLIENT_BUILD_PROFILE: 'official',
+  }, 'waibibabo')).toEqual({
+    DSH_CLIENT_COMMIT_HASH: '0123456', DSH_CLIENT_VERSION: '0.1.0',
+    DSH_CLIENT_TITLE: 'Waibibabo Harnesss', DSH_CLIENT_BUILD_PROFILE: 'waibibabo',
+  })
+})
 const PROBE_NAME = 'DSH_CLIENT_BUILD_TEST'
 const COMMIT_HASH = '0123456789abcdef0123456789abcdef01234567'
 const PROBE_KEY = `process.env.${PROBE_NAME}`

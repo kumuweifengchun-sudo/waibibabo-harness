@@ -11,6 +11,9 @@
     "lib/cli.js"
   ],
   "dependencies": {
+    "@deepseek-ai/dsh-base": "workspace:*",
+    "@deepseek-ai/dsh-web-app": "workspace:*",
+    "@deepseek-ai/dsh-waibibabo": "workspace:*",
     "koffi": "3.1.1",
     "@deepseek-ai/libreoffice-kit": "^0.1.5",
     "@deepseek-ai/cordis": "workspace:~",

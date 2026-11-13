@@ -103,6 +103,23 @@ describe('windows-acl write grants (LocalSandboxProvider)', () => {
     for (const dir of scratch.splice(0)) rmSync(dir, { recursive: true, force: true })
   }
 
+  it('owns one standing grant per folder and drops removed folders from later runner tokens', async () => {
+    const { sandbox, fiber } = await setup()
+    const primary = workspaceRoot()
+    const extra = workspaceRoot()
+    scratch.push(primary, extra)
+    const policy: SandboxPolicy = { mode: 'workspace-write', workspaceRoot: primary, sessionId: SessionId('multi-root') }
+    try {
+      const first = await sandbox.confine(['true'], { ...policy, additionalWritableRoots: [extra] })
+      expect(flag(first.argv, '--writable-root')).toBe(extra)
+      expect(mockState.grants.flatMap(grant => grant.added).filter(grant => grant.standing).map(grant => grant.path))
+        .toEqual([extra, primary])
+      const reduced = await sandbox.confine(['true'], policy)
+      expect(reduced.argv).not.toContain('--writable-root')
+      expect(mockState.grants).toHaveLength(3)
+    } finally { await fiber.dispose(); cleanup() }
+  })
+
   it('does not create grants for a cancelled confinement request', async () => {
     const { sandbox, fiber } = await setup()
     try {

@@ -193,6 +193,82 @@ afterEach(async () => {
 })
 
 describe('WorkspaceRegistry lifecycle and bootstrap', () => {
+  it('keeps session ownership across primary changes, removed roots, and restart', async () => {
+    const frontend = await makeDir('frontend')
+    const backend = await makeDir('backend')
+    const before = header('before-primary-change', frontend)
+    const after = header('after-primary-change', backend)
+    const h = await harness({ sessions: [before] })
+    const workspace = h.registry.list()[0]!
+    expect(workspace.directories).toEqual([frontend])
+    await h.registry.update(workspace.id, 'Full stack', [backend, frontend, backend])
+    expect(workspace.path).toBe(backend)
+    expect(workspace.directories).toEqual([backend, frontend])
+    h.setSessions([before, after])
+    await workspace.attachSession(after.id)
+    await h.registry.update(workspace.id, 'Full stack', [backend])
+    expect(workspace.sessionIds).toEqual([after.id, before.id])
+    expect(h.registry.forSession(before)?.directories).toEqual([backend])
+    const child: SessionHeader = { ...header('child', frontend), origin: 'subagent', parentSession: before.id }
+    expect(h.registry.forSession(child)?.id).toBe(workspace.id)
+    expect(h.registry.forSession({ ...header('ordinary-fork', frontend), parentSession: before.id })?.id).toBeUndefined()
+    const formerPrimary = await h.registry.create(frontend)
+    expect(formerPrimary.id).not.toBe(workspace.id)
+    await h.ctx.fiber.dispose()
+    const resumed = await harness({ pool: h.pool, sessions: [before, after] })
+    try {
+      const restored = resumed.registry.get(workspace.id)!
+      expect(restored.path).toBe(backend)
+      expect(restored.directories).toEqual([backend])
+      expect(restored.sessionIds).toEqual([after.id, before.id])
+      expect(resumed.registry.forSession(before)?.id).toBe(workspace.id)
+    } finally { await resumed.ctx.fiber.dispose() }
+  })
+
+  it('rejects invalid folders and a primary owned by another workspace without partial renaming', async () => {
+    const first = await makeDir('first')
+    const second = await makeDir('second')
+    const h = await harness()
+    try {
+      const workspace = await h.registry.create(first, 'Original')
+      await h.registry.create(second)
+      for (const paths of [[], ['relative'], [join(first, 'missing')], [second, first]]) {
+        await expect(h.registry.update(workspace.id, 'Uncommitted', paths)).rejects.toMatchObject({ name: 'WorkspaceDirectoryError' })
+        expect(workspace.title).toBe('Original')
+        expect(workspace.directories).toEqual([first])
+      }
+      await h.registry.update(workspace.id, 'Shared backend', [first, second])
+      expect(workspace.directories).toEqual([first, second])
+    } finally { await h.ctx.fiber.dispose() }
+  })
+
+  it('fences policy resolution during a directory edit and retains the old grants on refusal', async () => {
+    const first = await makeDir('first')
+    const second = await makeDir('second')
+    const session = header('active', first)
+    const h = await harness({ sessions: [session] })
+    let release!: () => void
+    let entered!: () => void
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    const started = new Promise<void>((resolve) => { entered = resolve })
+    h.ctx.on('workspace/session-activity', async (_request, next) => {
+      entered()
+      await gate
+      return [...await next(), { kind: 'probe' }]
+    })
+    const workspace = h.registry.list()[0]!
+    const saving = h.registry.update(workspace.id, 'New', [first, second])
+    const rejected = expect(saving).rejects.toMatchObject({ name: 'WorkspaceActiveSessionError' })
+    try {
+      await started
+      expect(() => h.registry.forSession(session)).toThrow('工作区目录正在保存')
+      release()
+      await rejected
+      expect(h.registry.forSession(session)?.directories).toEqual([first])
+      expect(workspace.title).not.toBe('New')
+    } finally { release(); await h.ctx.fiber.dispose() }
+  })
+
   it('stays pending without sessionPersistence and never opens or marks the domain', async () => {
     const pool = new MemoryMediaPool()
     const ctx = await storageContext(pool)
@@ -213,7 +289,7 @@ describe('WorkspaceRegistry lifecycle and bootstrap', () => {
     const newer = await makeDir('newer')
     const alias = join(base, 'older-link')
     const plain = join(base, 'plain.txt')
-    await symlink(older, alias)
+    await symlink(older, alias, process.platform === 'win32' ? 'junction' : 'dir')
     await writeFile(plain, 'not a directory')
     const missing = join(base, 'missing')
     const result = await harness({
@@ -384,7 +460,7 @@ describe('WorkspaceRegistry create and lookup', () => {
     const firstDir = await makeDir('first')
     const secondDir = await makeDir('second')
     const alias = join(base, 'first-link')
-    await symlink(firstDir, alias)
+    await symlink(firstDir, alias, process.platform === 'win32' ? 'junction' : 'dir')
     const { registry, pool } = await harness()
     const first = await registry.create(firstDir, 'Original')
     const second = await registry.create(secondDir)
@@ -1495,7 +1571,7 @@ describe('first-use Workspace preparation', () => {
     const target = join(h.directoryRoot, 'elsewhere')
     await mkdir(target)
     await mkdir(join(h.directoryRoot, 'nested'))
-    await symlink(target, join(h.directoryRoot, 'nested', 'Workspace'))
+    await symlink(target, join(h.directoryRoot, 'nested', 'Workspace'), process.platform === 'win32' ? 'junction' : 'dir')
     const workspace = await h.registry.initializeDefault(h.resolveDirectory)
     expect(workspace?.path).toBe(await realpath(target))
     // Not 'elsewhere': the title names the directory the caller asked for, so

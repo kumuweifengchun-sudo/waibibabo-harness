@@ -8,7 +8,8 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { collectSlotEntries, oversizedSlotReports, resolveSlotEntries, validateSlotContracts } from './gen-client-catalog.ts'
+import ts from 'typescript'
+import { collectSlotEntries, oversizedSlotReports, renderClientCatalog, resolveSlotEntries, validateSlotContracts } from './gen-client-catalog.ts'
 import type { SlotDeclaration, SlotRegistration, TypeDeclaration } from './slot-walk.ts'
 
 /** A declaration with every field the catalog needs, overridable per case. */
@@ -101,6 +102,16 @@ describe('client slot contract validation', () => {
 
 describe('client slot projection', () => {
   const kits = new Map<string, readonly string[]>([['root', ['useSessions: Hook']]])
+
+  it.each(['\r\n', '\r'])('renders declarations with %j line endings as portable TypeScript', (lineEnding) => {
+    const declarations = [declaration({ ownerType: 'DemoOwnerProps' })]
+    const owners = new Map([...OWNER_TYPES].map(([name, owner]) => [
+      name, { ...owner, text: owner.text.replaceAll('\n', lineEnding) },
+    ]))
+    const rendered = renderClientCatalog(resolveSlotEntries(declarations, [], owners, kits))
+    expect(rendered).toBe(renderClientCatalog(resolveSlotEntries(declarations, [], OWNER_TYPES, kits)))
+    expect(ts.transpileModule(rendered, { reportDiagnostics: true }).diagnostics).toEqual([])
+  })
 
   it('warns that a single seat with a shipped occupant is replaced, not shared', () => {
     const [entry] = resolveSlotEntries([declaration()], [registration()], OWNER_TYPES, kits)

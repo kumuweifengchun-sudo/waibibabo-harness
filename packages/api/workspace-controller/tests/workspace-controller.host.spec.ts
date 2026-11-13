@@ -137,6 +137,20 @@ describe('WorkspaceController commands', () => {
     })
   })
 
+  it('edits the primary and additional directories atomically through the Remote command', async () => {
+    const { controller, ctx, root } = await harness()
+    const front = stageDir(root, 'front')
+    const back = stageDir(root, 'back')
+    const { workspace } = await controller.create({ path: front })
+    const session = ctx.sessions.create(SessionId('existing'), { meta: { cwd: front } })
+    await ctx.workspaceRegistry.get(workspace.workspaceId)!.attachSession(session.id)
+    const saved = await controller.edit({ workspaceId: workspace.workspaceId, title: 'App', directories: [back, front] })
+    expect(saved.workspace).toMatchObject({ title: 'App', path: back, directories: [back, front], sessionIds: [session.id] })
+    await expect(controller.edit({ workspaceId: workspace.workspaceId, title: 'Invalid', directories: [] }))
+      .rejects.toMatchObject({ code: 'workspace/invalid-path' })
+    expect(ctx.workspaceRegistry.get(workspace.workspaceId)?.title).toBe('App')
+  })
+
   it('maps invalid paths, blank names, conflicts, and unknown ids to stable failures', async () => {
     const { controller, root } = await harness()
     const first = await controller.create({ path: stageDir(root, 'first') })

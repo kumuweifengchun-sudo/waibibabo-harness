@@ -84,7 +84,11 @@ export class WorkspaceEntity implements Workspace {
   }
 
   get path(): string {
-    return this.record.path
+    return this.record.directories?.[0] ?? this.record.path
+  }
+
+  get directories(): readonly string[] {
+    return [...(this.record.directories ?? [this.record.path])]
   }
 
   get title(): string {
@@ -100,7 +104,23 @@ export class WorkspaceEntity implements Workspace {
   }
 
   get sessionIds(): readonly SessionId[] {
-    return this.record.sessionIds.filter(id => this.host.candidateMatches(id, this.record.path))
+    return this.record.sessionIds.filter(id => this.candidateMatches(id, this.record))
+  }
+
+  /**
+   * Commit a registry-validated title and directory list in one durable write.
+   * @param title - display title.
+   * @param directories - canonical directories, primary first.
+   */
+  async update(title: string, directories: readonly string[]): Promise<void> {
+    await this.mutate(record => ({
+      ...record, title, directories: [...directories],
+      membershipPaths: [...new Set([record.path, ...(record.membershipPaths ?? []), ...directories.slice(0, 1)])],
+    }))
+  }
+
+  private candidateMatches(id: SessionId, record: WorkspaceRecord): boolean {
+    return [record.path, ...(record.membershipPaths ?? [])].some(path => this.host.candidateMatches(id, path))
   }
 
   async setTitle(title: string): Promise<void> {
@@ -109,8 +129,8 @@ export class WorkspaceEntity implements Workspace {
 
   async attachSession(sessionId: SessionId): Promise<void> {
     // Validation is skipped when the settled snapshot already accounts the
-    // id: the cwd fact was checked when it first attached and both inputs
-    // (stored header cwd, workspace path) are immutable. Membership itself is
+    // id: its immutable header cwd was validated at attach and remains in
+    // the primary-directory history. Membership itself is
     // decided on the write chain inside `mutate`, never on this snapshot.
     if (!this.record.sessionIds.includes(sessionId)) {
       const header = await this.host.readSessionHeader(sessionId)
@@ -136,7 +156,7 @@ export class WorkspaceEntity implements Workspace {
           + `its cwd '${header.cwd}' is not a directory`,
         )
       }
-      if (cwd !== this.record.path) {
+      if (cwd !== this.path) {
         throw new Error(
           `cannot attach session '${sessionId}' to workspace '${this.record.path}': `
           + `its cwd resolves to '${cwd}'`,
@@ -180,7 +200,7 @@ export class WorkspaceEntity implements Workspace {
 
   async status(): Promise<'ok' | 'missing-dir'> {
     try {
-      return (await stat(this.record.path)).isDirectory() ? 'ok' : 'missing-dir'
+      return (await Promise.all(this.directories.map(path => stat(path)))).every(info => info.isDirectory()) ? 'ok' : 'missing-dir'
     } catch {
       // Any stat failure (ENOENT, dangling parent, permission loss) means the
       // directory is not usable right now; the record itself never mutates.
@@ -206,7 +226,7 @@ export class WorkspaceEntity implements Workspace {
       next = await this.host.table().update(this.id, (current) => {
         const changed = fn(current)
         const sessionIds = changed.sessionIds.filter(
-          id => this.host.candidateMatches(id, changed.path),
+          id => this.candidateMatches(id, changed),
         )
         if (changed === current && sessionIds.length === current.sessionIds.length) {
           throw unchangedSentinel

@@ -116,10 +116,13 @@ export class ClientWorkspaceModel implements WorkspaceFollowSink {
    * Rename a Workspace and merge the unary result immediately.
    * @param workspaceId - target Workspace.
    * @param title - new display title.
+   * @param directories - optional authorized directories, primary first.
    * @returns generated Remote result.
    */
-  async rename(workspaceId: WorkspaceId, title: string): Promise<RemoteResult<WorkspaceValue>> {
-    const result = await this.remote.rename({ workspaceId, title })
+  async rename(workspaceId: WorkspaceId, title: string, directories?: readonly string[]): Promise<RemoteResult<WorkspaceValue>> {
+    const result = directories === undefined
+      ? await this.remote.rename({ workspaceId, title })
+      : await this.remote.edit({ workspaceId, title, directories })
     if (result.ok) this.upsert(result.value.workspace)
     return result
   }

@@ -63,9 +63,10 @@ export interface IWorkspaces {
    * Rename a Workspace.
    * @param workspaceId - target Workspace.
    * @param title - new display title.
+   * @param directories - optional authorized directories, primary first.
    * @returns the renamed Workspace.
    */
-  rename(workspaceId: WorkspaceId, title: string): Promise<WorkspaceView>
+  rename(workspaceId: WorkspaceId, title: string, directories?: readonly string[]): Promise<WorkspaceView>
   /**
    * Delete a Workspace registration without deleting Sessions or files.
    * @param workspaceId - target Workspace.
@@ -139,8 +140,8 @@ export class WorkspaceController extends Service implements IWorkspaces {
     return result.value?.workspace
   }
 
-  async rename(workspaceId: WorkspaceId, title: string): Promise<WorkspaceView> {
-    const result = await this.model.rename(workspaceId, title)
+  async rename(workspaceId: WorkspaceId, title: string, directories?: readonly string[]): Promise<WorkspaceView> {
+    const result = await this.model.rename(workspaceId, title, directories)
     if (!result.ok) throw commandError('rename', result.error)
     return result.value.workspace
   }

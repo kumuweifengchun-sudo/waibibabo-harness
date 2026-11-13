@@ -294,6 +294,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     'conversation.hero.frame': { kind: 'hoc'; scope: 'root'; owner: HeroFrameOwnerProps }
     /** Brand mark shown before the blank-session headline. */
     'conversation.hero.brand.mark': { kind: 'single'; scope: 'root'; owner: HeroBrandMarkOwnerProps }
+    /** Product name and release badge shown by the blank-session headline. */
+    'conversation.hero.brand.name': { kind: 'single'; scope: 'root' }
     /** Agent-preset control staged for a New Session. */
     'conversation.hero.agentPreset': { kind: 'single'; scope: 'session-maybe'; owner: HeroAgentPresetOwnerProps }
     /** Compact options right-aligned in the New Session row after the workspace and preset controls; rendered only with a Session. */
@@ -374,6 +376,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
         'conversation.input.dock': { kind: 'list'; scope: 'session' }
         'conversation.hero.frame': { kind: 'hoc'; scope: 'root' }
         'conversation.hero.brand.mark': { kind: 'single'; scope: 'root' }
+        'conversation.hero.brand.name': { kind: 'single'; scope: 'root' }
         'conversation.hero.workspace': { kind: 'single'; scope: 'root' }
         'conversation.hero.agentPreset': { kind: 'single'; scope: 'session-maybe' }
         'conversation.hero.options': { kind: 'list'; scope: 'session' }

@@ -598,6 +598,55 @@
   color: var(--dsw-alias-state-error-primary);
 }
 
+.directoryHeading {
+  margin: 16px 0 8px;
+  font-size: 13px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.directoryList {
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: var(--dsw-radius-lg);
+  overflow: hidden;
+}
+
+.directoryRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l4);
+}
+
+.directoryRow > svg {
+  flex-shrink: 0;
+}
+
+.directoryPath {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.directoryPath strong,
+.directoryPath span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.directoryPath span,
+.directoryHint {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.directoryHint {
+  margin: 8px 0 0;
+}
+
 .deleteAction:not(:disabled) {
   color: var(--dsw-alias-state-error-primary);
 }

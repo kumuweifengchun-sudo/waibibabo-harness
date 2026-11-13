@@ -47,6 +47,7 @@
     "./locale/*.json": "./locale/*.json"
   },
   "files": [
+    "lib/types/waibibabo-product.json",
     "locale/*.json",
     "lib/index.js",
     "lib/types/**/*.js",

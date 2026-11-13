@@ -4,6 +4,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Workspace } from '@deepseek-ai/dsh-workspace'
 import {
   WorkspaceActiveSessionError,
+  WorkspaceDirectoryError,
   WorkspaceArchivedSessionPinError,
   WorkspaceId,
   WorkspaceMoveInvalidError,
@@ -19,6 +20,7 @@ import type {
   WorkspaceCreateValue,
   WorkspaceDeleteRequest,
   WorkspaceDeleteValue,
+  WorkspaceEditRequest,
   WorkspaceInsertBeforeRequest,
   WorkspaceInsertSessionBeforeRequest,
   WorkspaceOrderValue,
@@ -69,6 +71,19 @@ export class WorkspaceCommands {
    * @returns the updated Workspace projection.
    */
   rename(request: WorkspaceRenameRequest): Promise<WorkspaceValue> {
+    return this.save(request)
+  }
+
+  /**
+   * Edit a workspace's title and directory grants under the dedicated edit action.
+   * @param request - target, title, and authorized directories.
+   * @returns the committed workspace.
+   */
+  edit(request: WorkspaceEditRequest): Promise<WorkspaceValue> {
+    return this.save(request, request.directories)
+  }
+
+  private save(request: WorkspaceRenameRequest, directories?: readonly string[]): Promise<WorkspaceValue> {
     const title = request.title.trim()
     if (title === '') {
       return Promise.reject(new RemoteError('gateway/bad-request', 'Workspace rename requires a non-blank title', {}))
@@ -84,7 +99,18 @@ export class WorkspaceCommands {
             { name: title },
           )
         }
-        await workspace.setTitle(title)
+      }
+      try {
+        await this.ctx.workspaceRegistry.update(workspace.id, title, directories)
+      } catch (error) {
+        if (error instanceof WorkspaceDirectoryError) {
+          throw new RemoteError('workspace/invalid-path', error.message, { path: error.path }, { cause: error })
+        }
+        if (error instanceof WorkspaceActiveSessionError) {
+          throw new RemoteError('workspace/session-active', '请先停止工作区内正在运行的任务、后台任务和自动化，并关闭终端，再修改文件夹',
+            { sessionId: error.sessionId, activity: error.activity }, { cause: error })
+        }
+        throw error
       }
       return { workspace: workspaceView(workspace) }
     })

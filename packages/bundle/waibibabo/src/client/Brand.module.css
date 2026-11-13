@@ -1,0 +1,15 @@
+.mark { object-fit: contain; flex-shrink: 0; }
+.identity { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.version { font-family: var(--ds-font-family-code); font-size: 10px; line-height: 12px; color: var(--dsw-alias-label-secondary); }
+.heroName { min-width: 0; overflow-wrap: anywhere; text-align: center; }
+.heroVersion { align-self: flex-start; margin-top: 2px; padding: 1px 7px; border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-state-business-tertiary); color: var(--dsw-alias-label-primary-bluish);
+  font-family: var(--ds-font-family-code); font-size: 12px; line-height: 18px; font-weight: 500; white-space: nowrap; }
+.name {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}

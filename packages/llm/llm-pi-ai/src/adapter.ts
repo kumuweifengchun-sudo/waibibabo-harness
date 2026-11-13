@@ -117,6 +117,11 @@ export interface PiAiAdapterOptions {
    * @returns headers to pass to pi-ai after applying Harness attribution.
    */
   prepareHeaders?: (request: PiAiRequestHeaderContext, headers: Headers) => Headers
+  /** Supply an instance-owned transport for OpenAI Responses only; other protocols keep their SDK transport.
+   * @param request - Routing and session identity of this prepared call.
+   * @returns a Fetch-compatible transport; its owner must cancel and release it on disposal.
+   */
+  responsesFetch?: (request: PiAiRequestHeaderContext) => typeof globalThis.fetch
   /** Resolve the optional durable attachment service at request time. */
   resolveAttachments?: () => AttachmentStore | undefined
   /** Bridge one attachment reference into the current model-tool execution world. */
@@ -236,6 +241,13 @@ function requestHeaderDiagnostic(error: unknown): string {
     : 'the contributing plugin threw a non-Error value; throw an Error with a safe diagnostic'
 }
 
+/** Capture immutable routing metadata shared by header and transport contributors. */
+function requestMetadata(options: GenerateOptions<string>, baseURL: string): PiAiRequestHeaderContext {
+  return Object.freeze({ provider: options.provider, model: options.model, baseURL,
+    ...options.sessionId === undefined ? {} : { sessionId: options.sessionId },
+    ...options.purpose === undefined ? {} : { purpose: options.purpose } })
+}
+
 /** Prepare request-owned headers without allowing contributors to replace attribution. */
 function requestHeaders(
   configured: Readonly<Record<string, string>> | undefined,
@@ -247,13 +259,7 @@ function requestHeaders(
     const initial = new Headers()
     // Profile aliases overwrite case-insensitively; the Headers constructor appends them.
     for (const [name, value] of Object.entries(configured ?? {})) initial.set(name, value)
-    const request: PiAiRequestHeaderContext = Object.freeze({
-      provider: options.provider,
-      model: options.model,
-      baseURL,
-      ...options.sessionId === undefined ? {} : { sessionId: options.sessionId },
-      ...options.purpose === undefined ? {} : { purpose: options.purpose },
-    })
+    const request = requestMetadata(options, baseURL)
     const headers = prepare === undefined ? initial : prepare(request, initial)
     for (const [name, value] of Object.entries(attributionHeaders())) headers.set(name, value)
     return Object.fromEntries(headers)
@@ -409,6 +415,7 @@ export class PiAiAdapter extends LlmAdapter {
     // the one it started with and the next call picks up the new one.
     const profile = this.profileOf(snapshot, options.provider)
     const model = this.modelOf(snapshot, options.provider, options.model)
+    const responsesFetch = model.api === 'openai-responses' ? this.config.responsesFetch : undefined
     const updates = conversationUpdates(model)
     // pi-ai collapses Anthropic tool updates without an initially active declaration.
     const tools = options.tools ?? []
@@ -459,6 +466,9 @@ export class PiAiAdapter extends LlmAdapter {
         }, onReplayDegrade, updates.systemPromptUpdate === 'in-history')
       const events = snapshot.models.streamSimple(model, context, {
         ...profileOptions(profile, reasoning, apiKey),
+        ...responsesFetch === undefined ? {} : {
+          fetch: responsesFetch(requestMetadata(options, model.baseUrl)),
+        },
         ...options.temperature === undefined ? {} : { temperature: options.temperature },
         ...options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens },
         ...options.sessionId === undefined ? {} : { sessionId: String(options.sessionId) },

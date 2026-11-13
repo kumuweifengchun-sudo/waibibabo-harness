@@ -5,6 +5,7 @@
  * @module scripts/verify-upgrade-guides
  */
 
+import { CHINESE_PRODUCT_UPGRADE_GUIDE } from './product-chinese-docs.ts'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { JSON_SCHEMA, load } from 'js-yaml'
@@ -68,7 +69,7 @@ export function collectUpgradeGuideViolations(root: string): string[] {
       continue
     }
     if (name === 'guide.md' || name === 'guide.zh.md') {
-      for (const violation of guideViolations(readFileSync(join(directory, file), 'utf8'), LANGUAGES[name])) violations.push(`${path}: ${violation}`)
+      for (const violation of guideViolations(readFileSync(join(directory, file), 'utf8'), LANGUAGES[path === CHINESE_PRODUCT_UPGRADE_GUIDE ? 'guide.zh.md' : name])) violations.push(`${path}: ${violation}`)
     }
   }
   return violations

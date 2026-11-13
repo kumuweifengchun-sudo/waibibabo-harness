@@ -1,4 +1,4 @@
-/** Stage local-branded DSH packages for unsigned Desktop builds without a publication record. */
+/** Stage the desktop product's private packages without an upstream npm publication record. */
 
 import { resolve } from 'node:path'
 import { parseArgs } from 'node:util'
@@ -18,7 +18,7 @@ async function main(): Promise<void> {
   if (values.out === undefined) throw new Error('desktop local pack: --out must name the package staging directory')
   const concurrency = parsePackConcurrency(values.concurrency)
   const root = process.cwd()
-  const environment = resolveClientBuildEnvironment(repositoryClientBuildEnvironment(root), 'local')
+  const environment = resolveClientBuildEnvironment(repositoryClientBuildEnvironment(root), 'waibibabo')
   readClientBuildRecord(root, environment)
   const destination = resolve(root, values.out)
   const packed = await packFamilyMembers(root, releaseFamily('dsh'), destination, concurrency)

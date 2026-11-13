@@ -1,0 +1,38 @@
+- id: deepseek-account
+  disabled: true
+- id: llm-deepseek-account
+  disabled: true
+- id: account-controller
+  disabled: true
+- id: ui-settings-account
+  disabled: true
+- id: ui-settings-models
+  config:
+    credentialOnboarding: false
+- id: desktop-product-telemetry
+  disabled: true
+- id: product-analytics
+  disabled: true
+- id: session-log-deepseek
+  disabled: true
+- id: session-telemetry-otel
+  disabled: true
+- id: ui-settings-session-log
+  disabled: true
+- id: ui-brand-official
+  disabled: true
+- id: harness-dev-context
+  disabled: true
+- id: system-prompt
+  config:
+    harnessIdentity: '你是运行于 Waibibabo Harnesss（WSS）的 AI 助手，通过平台模型帮助用户处理编码、文件和其他任务，默认使用中文交流。'
+- insert:
+    - id: waibibabo-brand
+      name: '@deepseek-ai/dsh-waibibabo'
+    - id: sub2api-account
+      name: '@deepseek-ai/dsh-sub2api-account'
+      config:
+        platformOrigin: !!js process.env.WAIBIBABO_PLATFORM_ORIGIN || 'https://www.waibibabo.com'
+        accountOrigins: !!js "process.env.WAIBIBABO_PLATFORM_ORIGIN && process.env.WAIBIBABO_PLATFORM_ORIGIN !== 'https://www.waibibabo.com' ? [] : ['https://sub.waibibabo.com', 'https://api.waibibabo.com']"
+        productName: Waibibabo Harnesss
+        allowLoopbackHttp: !!js process.env.WAIBIBABO_ALLOW_LOOPBACK_HTTP === '1'

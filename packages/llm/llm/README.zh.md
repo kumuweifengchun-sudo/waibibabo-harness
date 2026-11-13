@@ -58,6 +58,8 @@ for await (const chunk of ctx.llm.stream({
 
 挂载成功后，`ctx.llm.listProviders()` 会按注册顺序报告已注册路由。
 
+提供方请求携带 `User-Agent: wss/<version>`，其中 `<version>` 来自[共享桌面产品配置](src/waibibabo-product.json)。默认标识不附带网址注释；自定义标识可通过 `AppIdentity.url` 添加。详见[应用归属](../../../docs/subsystems/llm-streaming.zh.md)。
+
 辅助请求的生产方通过扩展 `@deepseek-ai/dsh-llm/types` 中的 `LlmRequestPurposeMap` 声明自己的 `purpose`，每个键映射到 `true`。`GenerateOptions.purpose` 接受已声明的键，普通对话请求则省略它。构造辅助请求前，应导入生产方包或其公开类型。适配器将用途作为模型不可见的传输元数据传递，并在遇到不熟悉的用途时继续处理请求。
 
 `GenerateOptions.messages` 接受持久 `Message` 值和仅供请求使用的 `RequestUserInput` 值。仅供请求使用的输入包含 user-role 内容，不含 `id` 或 `source`；Session 写入和 Agent 投递仍然要求持久消息。调用方必须在流结束前保持辅助输入不变。会记录完整请求的调用方（例如会话标题生成）必须使用持久消息。

@@ -68,19 +68,43 @@ if ($TestProgress -or $CompileProgressOnly) {
     }
 }
 Add-Type -AssemblyName System.Drawing
-foreach ($asset in @('brand', 'brand-2x', 'brand-dark', 'brand-dark-2x', 'uninstaller-sidebar')) {
-    $image = [Drawing.Image]::FromFile((Join-Path $installerRoot "assets/$asset.png"))
-    try {
-        $bitmap = [Drawing.Bitmap]::new($image.Width, $image.Height, [Drawing.Imaging.PixelFormat]::Format24bppRgb)
+$product = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../../../packages/llm/llm/src/waibibabo-product.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+$image = [Drawing.Image]::FromFile((Join-Path $PSScriptRoot '../../../packages/bundle/waibibabo/src/client/assets/icon.png'))
+try {
+    foreach ($asset in @('brand', 'brand-2x', 'brand-dark', 'brand-dark-2x', 'uninstaller-sidebar')) {
+        $scale = if ($asset -like '*-2x') { 2 } else { 1 }
+        $sidebar = $asset -eq 'uninstaller-sidebar'
+        $width = if ($sidebar) { 164 } else { 600 * $scale }
+        $height = if ($sidebar) { 314 } else { 196 * $scale }
+        $bitmap = [Drawing.Bitmap]::new($width, $height, [Drawing.Imaging.PixelFormat]::Format24bppRgb)
         try {
             $graphics = [Drawing.Graphics]::FromImage($bitmap)
             try {
-                $background = if ($asset -like '*dark*') { [Drawing.Color]::FromArgb(21, 21, 23) } else { [Drawing.Color]::White }
+                $dark = $asset -like '*dark*'
+                $background = if ($dark) { [Drawing.Color]::FromArgb(21, 21, 23) } else { [Drawing.Color]::White }
                 $graphics.Clear($background)
-                $graphics.DrawImage($image, 0, 0, $image.Width, $image.Height)
+                $graphics.InterpolationMode = [Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+                $graphics.PixelOffsetMode = [Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+                $edge = 120 * $scale
+                $top = if ($sidebar) { 54 } else { 16 * $scale }
+                $graphics.DrawImage($image, [int](($width - $edge) / 2), $top, $edge, $edge)
+                $fontSize = if ($sidebar) { 16 } else { 24 * $scale }
+                $font = [Drawing.Font]::new('Segoe UI', $fontSize, [Drawing.FontStyle]::Regular, [Drawing.GraphicsUnit]::Pixel)
+                $foreground = if ($dark) { [Drawing.Color]::White } else { [Drawing.Color]::FromArgb(21, 21, 23) }
+                $brush = [Drawing.SolidBrush]::new($foreground)
+                $format = [Drawing.StringFormat]::new()
+                try {
+                    $format.Alignment = [Drawing.StringAlignment]::Center
+                    $format.LineAlignment = [Drawing.StringAlignment]::Center
+                    $textTop = if ($sidebar) { 190 } else { 150 * $scale }
+                    $textHeight = if ($sidebar) { 60 } else { 40 * $scale }
+                    $bounds = [Drawing.RectangleF]::new(8 * $scale, $textTop, $width - 16 * $scale, $textHeight)
+                    $graphics.TextRenderingHint = [Drawing.Text.TextRenderingHint]::AntiAliasGridFit
+                    $graphics.DrawString($product.name, $font, $brush, $bounds, $format)
+                } finally { $format.Dispose(); $brush.Dispose(); $font.Dispose() }
             } finally { $graphics.Dispose() }
             $bitmap.Save((Join-Path $output "$asset.bmp"), [Drawing.Imaging.ImageFormat]::Bmp)
         } finally { $bitmap.Dispose() }
-    } finally { $image.Dispose() }
-}
+    }
+} finally { $image.Dispose() }
 Write-Output "Prepared native installer resources: $output"

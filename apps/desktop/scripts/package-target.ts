@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process'
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { parseArgs } from 'node:util'
 import { join, resolve } from 'node:path'
+import product from '@deepseek-ai/dsh-waibibabo/src/product.ts'
 import {
   desktopBuildRecordFilename,
   resolveDesktopAutoUpdateConfig,
@@ -144,7 +145,7 @@ function writeReleaseRecord(
   if (desktopVersion !== dshVersion) {
     throw new Error(`desktop package: desktop version ${desktopVersion} does not match dsh version ${dshVersion}`)
   }
-  const buildVersion = resolveDesktopBuildVersion(environment, dshVersion)
+  const buildVersion = resolveDesktopBuildVersion(environment, product.version)
   const packaged = resolveDesktopBuildCommit(environment)
   const update = resolveDesktopAutoUpdateConfig(environment, target.platform, target.arch)
   const recordPath = join(artifactsRoot, desktopBuildRecordFilename(target.name))
@@ -349,7 +350,7 @@ async function main(): Promise<void> {
     : loadDesktopPackageEnvironment(target.platform, process.env, APP_ROOT, {
       unsigned: invocation.unsigned, prepareOnly: invocation.prepareOnly,
     })
-  const productVersion = packageVersion(join(APP_ROOT, 'package.json'), 'desktop package')
+  const productVersion = product.version
   // Release settings come from the selected configuration files, so the version this run publishes is an
   // argument; the environment variable below only carries it to the child processes that build.
   const buildVersion = await resolveRequestedBuildVersion(invocation, productVersion, environment)
@@ -478,7 +479,7 @@ export async function packageTarget(
         { cwd: APP_ROOT, env: electronBuilderEnv, timeoutMs: 60_000 })
     })
   }
-  await execute(invocation.unsigned ? ['run', 'build', '--profile', 'local'] : ['run', 'build:official'], buildEnv, REPOSITORY_ROOT)
+  await execute(['run', 'build', '--profile', 'waibibabo'], buildEnv, REPOSITORY_ROOT)
   let preparationFailure: { error: unknown } | undefined
   const executePreparation = async (args: readonly string[], env: NodeJS.ProcessEnv, cwd?: string): Promise<void> => {
     if (preparationFailure !== undefined) throw preparationFailure.error
@@ -487,9 +488,7 @@ export async function packageTarget(
   }
   const pack = async (): Promise<void> => {
     await executePreparation([
-      ...(invocation.unsigned
-        ? ['exec', 'tsx', 'apps/desktop/scripts/pack-local-packages.ts']
-        : ['run', 'release:pack', '--family', 'dsh']),
+      'exec', 'tsx', 'apps/desktop/scripts/pack-local-packages.ts',
       '--out', buildPaths.packedDsh, ...packArguments,
     ], buildEnv, REPOSITORY_ROOT)
     await executePreparation([
@@ -538,7 +537,7 @@ export async function packageTarget(
     await withMacOSNotarizationProxy(mac?.notarizationProxy, () => packageMacOSArtifacts({
       arch: target.arch,
       // electron-builder named these artifacts after the published version, so locating them uses the same identifier.
-      version: resolveDesktopBuildVersion(environment, packageVersion(join(APP_ROOT, 'package.json'), 'desktop package')),
+      version: resolveDesktopBuildVersion(environment, product.version),
       artifactsRoot: buildPaths.artifacts,
       environment: electronBuilderEnv,
     }, buildMacArtifact), undefined, undefined, proxyEvent)

@@ -23,6 +23,7 @@ import type { Api, ApiKeyAuth, Model, Provider, ProviderStreams } from '@earendi
 import { anthropicMessagesApi } from '@earendil-works/pi-ai/api/anthropic-messages.lazy'
 import { openAICompletionsApi } from '@earendil-works/pi-ai/api/openai-completions.lazy'
 import { openAIResponsesApi } from '@earendil-works/pi-ai/api/openai-responses.lazy'
+import { googleGenerativeAIApi } from '@earendil-works/pi-ai/api/google-generative-ai.lazy'
 import { catalogProvider, PiAiCatalogError } from './catalog.ts'
 import { createProvider } from './models.ts'
 
@@ -48,6 +49,7 @@ const PROTOCOLS: Readonly<Record<string, () => ProviderStreams>> = {
   'openai-completions': openAICompletionsApi,
   'openai-responses': openAIResponsesApi,
   'anthropic-messages': anthropicMessagesApi,
+  'google-generative-ai': googleGenerativeAIApi,
 }
 
 /**
@@ -86,6 +88,8 @@ function harnessApiKeyAuth(name: string): ApiKeyAuth {
 
 /** The resolved route facts provider construction reads. */
 export interface ProviderSpec {
+  /** Explicit model-level API overrides select the configured-protocol factories instead of catalog dispatch. */
+  modelApiOverrides?: boolean | undefined
   /** Provider route key; also the `Models` collection key and each model's `provider`. */
   provider: string
   /** Display name for selectors and status labels. */
@@ -169,17 +173,29 @@ export function buildProvider(spec: ProviderSpec): Provider {
   // A catalog route keeping its catalog protocol reuses the catalog provider;
   // an explicit protocol means the deployment is repointing the route at a
   // different wire format, which only the protocol table can serve.
-  if (catalog !== undefined && spec.api === undefined) return reuseCatalogProvider(catalog, spec)
+  if (catalog !== undefined && spec.api === undefined && !spec.modelApiOverrides) return reuseCatalogProvider(catalog, spec)
 
-  // Every model on this path carries the route's protocol: model resolution
-  // requires one for a route the catalog cannot default, and an explicit one
-  // replaces each catalog model's own. So the route has a single API.
-  const factory = spec.api === undefined ? undefined : PROTOCOLS[spec.api]
-  if (factory === undefined) {
-    throw new PiAiCatalogError(
-      `llm-pi-ai: provider "${spec.provider}" names api "${spec.api}", which this build cannot serve;`
-      + ` supported protocols are ${supportedProtocols().join(', ')}`,
-    )
+  const implementations = new Map<string, ProviderStreams>()
+  const apis = new Set(spec.models.map(model => model.api))
+  if (spec.api !== undefined) apis.add(spec.api)
+  if (apis.size === 0) {
+    throw new PiAiCatalogError(`llm-pi-ai: provider "${spec.provider}" names no api, which this build cannot serve;`
+      + ` supported protocols are ${supportedProtocols().join(', ')}`)
+  }
+  for (const api of apis) {
+    const factory = PROTOCOLS[api]
+    if (factory === undefined) {
+      throw new PiAiCatalogError(
+        `llm-pi-ai: provider "${spec.provider}" names api "${api}", which this build cannot serve;`
+        + ` supported protocols are ${supportedProtocols().join(', ')}`,
+      )
+    }
+    implementations.set(api, factory())
+  }
+  const implementationFor = (model: Model<Api>): ProviderStreams => {
+    const implementation = implementations.get(model.api)
+    if (implementation === undefined) throw new PiAiCatalogError(`llm-pi-ai: model "${model.id}" has no registered protocol implementation`)
+    return implementation
   }
   return createProvider({
     id: spec.provider,
@@ -187,6 +203,9 @@ export function buildProvider(spec: ProviderSpec): Provider {
     ...spec.baseURL === undefined ? {} : { baseUrl: spec.baseURL },
     auth: routeAuth(spec, catalog),
     models: spec.models,
-    api: factory(),
+    api: {
+      stream: (model, context, options) => implementationFor(model).stream(model, context, options),
+      streamSimple: (model, context, options) => implementationFor(model).streamSimple(model, context, options),
+    },
   })
 }

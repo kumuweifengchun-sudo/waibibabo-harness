@@ -2560,7 +2560,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
   {
     key: 'sandboxPolicy',
     summary: 'The sandbox-policy service (`ctx.sandboxPolicy`).',
-    description: 'The sandbox-policy service (`ctx.sandboxPolicy`). Owns the deployment default mode, fallback workspace root, and current request-time policy section. Tool layers call resolve for each execution so a session\'s mode log and immutable cwd travel together to every enforcing capability.',
+    description: 'The sandbox-policy service (`ctx.sandboxPolicy`). Owns the deployment default mode, fallback workspace root, and current request-time policy section. Tool layers call resolve for each execution so a session\'s mode log and current directory grants travel together to every enforcing capability.',
     methods: [
       {
         signature: 'readonly defaultMode: SandboxMode',
@@ -2579,7 +2579,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: 'resolve(request: SandboxPolicyRequest = {}): SandboxExecutionPolicy',
-        description: 'Resolve the complete policy for one capability call. An approved explicit mode outranks the session\'s last `sandbox/mode` event, which outranks the deployment default. A session cwd is its workspace-write boundary; the configured root is the fallback for agentless calls and sessions without a cwd.',
+        description: 'Resolve the complete policy for one capability call. An approved explicit mode outranks the session\'s last `sandbox/mode` event, which outranks the deployment default. A registered workspace supplies its current primary and additional directories, including for subagents. Ungrouped Sessions use header cwd; agentless calls and cwd-less Sessions use the configured root.',
         parameters: [{ name: 'request', description: 'optional session and approved mode override.' }],
         returns: 'the fully resolved per-call mode and absolute workspace root.',
       },
@@ -3660,6 +3660,187 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'sub2apiAccount',
+    summary: 'Owns account credentials, browser attempts and the model routes they authorize.',
+    description: 'Owns account credentials, browser attempts and the model routes they authorize.',
+    methods: [
+      {
+        signature: '@Remote setAccountOrigin(origin: string | null): Promise<AccountView>',
+        description: 'Save the device\'s account connection independently of model routes and login credentials.',
+        parameters: [{ name: 'origin', description: 'A configured account origin, or null for automatic detection.' }],
+        returns: 'updated routing state; an unavailable manual selection stays saved for explicit repair.',
+      },
+      {
+        signature: '@Remote getState(): Promise<AccountView>',
+        description: 'Read account state and restore available models after a Host restart.',
+        parameters: [],
+        returns: 'display-safe account state; query failures retain the stored login.',
+      },
+      {
+        signature: '@Remote refresh(): Promise<AccountView>',
+        description: 'Refresh profile, allowed groups, account usage and the selected model catalog.',
+        parameters: [],
+        returns: 'updated state, retaining previous details on transient failure.',
+      },
+      {
+        signature: '@Remote selectGroup(groupId: Sub2apiGroupId): Promise<AccountView>',
+        description: 'Select one server-authorized group; its credential never enters the client.',
+        parameters: [{ name: 'groupId', description: 'group from the current account snapshot.' }],
+        returns: 'state after model discovery or its explicit failure.',
+      },
+      {
+        signature: '@Remote setModelProtocol(groupId: Sub2apiGroupId, model: string, protocol: ModelProtocolChoice): Promise<AccountView>',
+        description: 'Set or remove the protocol override for a model in the current account\'s selected group.',
+        parameters: [{ name: 'groupId', description: 'Group shown when the client rendered the control.' }, { name: 'model', description: 'Exact id from the current group\'s model catalog.' }, { name: 'protocol', description: 'Selected wire protocol, or auto to remove the override.' }],
+        returns: 'state after durable storage and model registration; already prepared requests keep their original protocol.',
+      },
+      {
+        signature: '@Remote setModelLimits(limits: ModelLimits): Promise<AccountView>',
+        description: 'Save the allocation inherited by models without an override.',
+        parameters: [{ name: 'limits', description: 'Context budget and disjoint input/output caps.' }],
+        returns: 'account state after persistence and model-registration refresh.',
+      },
+      {
+        signature: '@Remote setModelLimitOverride(groupId: Sub2apiGroupId, model: string, limits: ModelLimits | null): Promise<AccountView>',
+        description: 'Set an individual allocation or restore inheritance for one current-group model.',
+        parameters: [{ name: 'groupId', description: 'Group shown when the client rendered the control.' }, { name: 'model', description: 'Exact model id from that group\'s catalog.' }, { name: 'limits', description: 'Explicit budgets, or null to inherit the account defaults.' }],
+        returns: 'account state after saving and refreshing model metadata.',
+      },
+      {
+        signature: '@Remote getGateways(signal?: AbortSignal): Promise<PlatformResult<GatewayView>>',
+        description: 'Read advertised inference addresses and routing choices, independently of the account connection.',
+        parameters: [{ name: 'signal', description: 'Request cancellation.' }],
+        returns: 'available gateways and the saved selection.',
+      },
+      {
+        signature: '@Remote setGateway(id: GatewayId | null, allowInsecure: boolean): Promise<PlatformResult<GatewayView>>',
+        description: 'Save an administrator-advertised inference address for subsequent model and image requests.',
+        parameters: [{ name: 'id', description: 'Address id from the latest platform list, or null to detect an inference route automatically.' }, { name: 'allowInsecure', description: 'Explicit acknowledgement that HTTP sends inference keys and prompts without encryption.' }],
+        returns: 'current addresses after durable selection and model refresh.',
+      },
+      {
+        signature: '@Remote getImageModels(groupId: Sub2apiGroupId, signal?: AbortSignal): Promise<PlatformResult<readonly string[]>>',
+        description: 'List an image group\'s models independently of the conversation group.',
+        parameters: [{ name: 'groupId', description: 'An image-enabled group belonging to the current account.' }, { name: 'signal', description: 'Client cancellation.' }],
+        returns: 'model ids advertised for this group\'s inference credential.',
+      },
+      {
+        signature: '@Remote generateImages(input: ImageRequest, signal?: AbortSignal): Promise<PlatformResult<ImageResult>>',
+        description: 'Generate images through one authorized group without changing the conversation model.',
+        parameters: [{ name: 'input', description: 'Explicit user prompt and image options.' }, { name: 'signal', description: 'User cancellation; cancellation does not reverse possible upstream billing.' }],
+        returns: 'image previews or an explicit failure, with no automatic request replay.',
+      },
+      {
+        signature: '@Remote getCheckout(signal?: AbortSignal): Promise<PlatformResult<CheckoutView>>',
+        description: 'Read native checkout prices, subscription plans and method availability.',
+        parameters: [{ name: 'signal', description: 'Client cancellation.' }],
+        returns: 'platform checkout data without provider secrets.',
+      },
+      {
+        signature: '@Remote getSubscriptions(signal?: AbortSignal): Promise<PlatformResult<readonly SubscriptionView[]>>',
+        description: 'Read subscription status and remaining-period progress for the current account.',
+        parameters: [{ name: 'signal', description: 'Client cancellation.' }],
+        returns: 'user-owned subscriptions.',
+      },
+      {
+        signature: '@Remote createOrder(input: OrderRequest): Promise<PlatformResult<PaymentLaunch>>',
+        description: 'Create one order after the user selects a recharge amount or subscription.',
+        parameters: [{ name: 'input', description: 'Explicit purchase selection.' }],
+        returns: 'order amounts and a payment page or QR code; uncertain results must be checked in order history.',
+      },
+      {
+        signature: '@Remote getOrders(query: PlatformPageQuery, signal?: AbortSignal): Promise<PlatformResult<OrderPage>>',
+        description: 'Read only the current account\'s payment orders.',
+        parameters: [{ name: 'query', description: 'Bounded pagination and status.' }, { name: 'signal', description: 'Client cancellation.' }],
+        returns: 'user-owned orders and totals.',
+      },
+      {
+        signature: '@Remote getOrder(id: PaymentOrderId, verify: boolean): Promise<PlatformResult<PaymentOrder>>',
+        description: 'Refresh one order and optionally ask its provider to verify payment.',
+        parameters: [{ name: 'id', description: 'Owned order identifier.' }, { name: 'verify', description: 'Query the payment provider through the platform.' }],
+        returns: 'authoritative order state; a browser return alone never marks payment successful.',
+      },
+      {
+        signature: '@Remote cancelOrder(id: PaymentOrderId): Promise<PlatformResult<null>>',
+        description: 'Cancel an owned pending payment order through the platform\'s existing rules.',
+        parameters: [{ name: 'id', description: 'Owned order identifier.' }],
+        returns: 'acknowledgement only after the platform confirms cancellation.',
+      },
+      {
+        signature: '@Remote getInvoices(query: PlatformPageQuery, signal?: AbortSignal): Promise<PlatformResult<InvoicePage>>',
+        description: 'List user-owned invoice applications.',
+        parameters: [{ name: 'query', description: 'Pagination and status.' }, { name: 'signal', description: 'Client cancellation.' }],
+        returns: 'invoice summaries and attachment metadata.',
+      },
+      {
+        signature: '@Remote getInvoice(id: InvoiceId): Promise<PlatformResult<InvoiceView>>',
+        description: 'Read one owned invoice, including current version and issued files.',
+        parameters: [{ name: 'id', description: 'Invoice id from the account\'s list.' }],
+        returns: 'the current application.',
+      },
+      {
+        signature: '@Remote quoteInvoice(paymentAmount: string): Promise<PlatformResult<InvoiceQuote>>',
+        description: 'Calculate invoice fees on the server before submitting evidence.',
+        parameters: [{ name: 'paymentAmount', description: 'Actual payment amount in CNY.' }],
+        returns: 'server-calculated amounts in integer cents.',
+      },
+      {
+        signature: '@Remote saveInvoice(input: InvoiceRequest): Promise<PlatformResult<InvoiceView>>',
+        description: 'Submit or edit an application with the website\'s evidence and version checks.',
+        parameters: [{ name: 'input', description: 'Fields, screenshots and stable retry key.' }],
+        returns: 'the saved application; uncertain retries must retain the same key and fields.',
+      },
+      {
+        signature: '@Remote getInvoiceFile(id: InvoiceId, fileId: InvoiceFileId): Promise<PlatformResult<PlatformFile>>',
+        description: 'Download a file from the latest owned invoice without exposing authentication headers.',
+        parameters: [{ name: 'id', description: 'Invoice identifier.' }, { name: 'fileId', description: 'File identifier present in that invoice.' }],
+        returns: 'verified PNG, JPEG or PDF content for a user-initiated save.',
+      },
+      {
+        signature: '@Remote async getUsage(query: UsageQuery, signal?: AbortSignal): Promise<UsageResult>',
+        description: 'Query the signed-in user\'s platform usage records and totals for identical filters.',
+        parameters: [{ name: 'query', description: 'Date range, model, group, request mode and pagination; user identity always comes from the stored grant.' }, { name: 'signal', description: 'Cancellation owned by the requesting client view.' }],
+        returns: 'display-safe usage or an explicit query failure; no request bodies or credentials are retained.',
+      },
+      {
+        signature: '@Remote startSignIn(): Promise<AccountView>',
+        description: 'Start system-browser authorization with a loopback callback and PKCE.',
+        parameters: [],
+        returns: 'the platform authorization URL and pending account state.',
+      },
+      {
+        signature: '@Remote signInWithPassword(email: string, password: string): Promise<AccountView>',
+        description: 'Verify platform credentials without persisting the password or browser session.',
+        parameters: [{ name: 'email', description: 'existing platform email account.' }, { name: 'password', description: 'password used only for the current authentication request.' }],
+        returns: 'signed-in, two-factor-required, or failed state.',
+      },
+      {
+        signature: '@Remote finishTwoFactor(code: string): Promise<AccountView>',
+        description: 'Complete the current password login\'s platform two-factor challenge.',
+        parameters: [{ name: 'code', description: 'six-digit authenticator code.' }],
+        returns: 'signed-in state or a retryable two-factor failure.',
+      },
+      {
+        signature: '@Remote async cancelSignIn(): Promise<AccountView>',
+        description: 'Cancel a pending authorization; an admitted credential commit finishes first.',
+        parameters: [],
+        returns: 'settled account state, excluding late callbacks.',
+      },
+      {
+        signature: '@Remote async signOut(): Promise<AccountView>',
+        description: 'Remove local login and revoke the device grant and associated inference leases.',
+        parameters: [],
+        returns: 'signed-out state; a remote cleanup failure remains visible.',
+      },
+      {
+        signature: '@Remote({ mode: \'stream\' }) async *watch(signal: AbortSignal): AsyncIterable<AccountView>',
+        description: 'Observe initial state and later committed account changes.',
+        parameters: [{ name: 'signal', description: 'Remote subscription lifetime; ending it does not cancel login.' }],
+        returns: 'sanitized snapshots with no passwords, tokens or API keys.',
+      },
+    ],
+  },
+  {
     key: 'subagentModelSelection',
     summary: 'Host settings owner that records Session authorization before the first model request.',
     description: 'Host settings owner that records Session authorization before the first model request.',
@@ -4528,6 +4709,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the updated Workspace projection.',
       },
       {
+        signature: '@Remote(\'edit\') edit(request: WorkspaceEditRequest): Promise<WorkspaceValue>',
+        description: 'Save the workspace title and directory grants. This action is separate from rename-only access.',
+        parameters: [{ name: 'request', description: 'workspace identity, title, and authorized directories, primary first.' }],
+        returns: 'the updated workspace projection.',
+      },
+      {
         signature: '@Remote(\'delete\') delete(request: WorkspaceDeleteRequest): Promise<WorkspaceDeleteValue>',
         description: 'Remove one Workspace registration while retaining files and Sessions.',
         parameters: [{ name: 'request', description: 'Workspace identity to remove.' }],
@@ -4637,6 +4824,18 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Look up a workspace by id.',
         parameters: [{ name: 'id', description: 'Workspace id.' }],
         returns: 'the workspace, or `undefined` when unknown.',
+      },
+      {
+        signature: 'forSession(header: SessionHeader): Workspace | undefined',
+        description: 'Find a Session\'s workspace, inheriting it only through subagent ancestry. Directory edits temporarily reject policy resolution until their durable write settles.',
+        parameters: [{ name: 'header', description: 'caller\'s immutable Session metadata.' }],
+        returns: 'the owning workspace, or undefined for an ungrouped Session.',
+      },
+      {
+        signature: 'update(id: WorkspaceId, title: string, directories?: readonly string[]): Promise<Workspace>',
+        description: 'Save a title and canonical authorized directories atomically. New Sessions use the first directory. Running work and persistent terminals must finish before the directory grants can change.',
+        parameters: [{ name: 'id', description: 'workspace identity.' }, { name: 'title', description: 'validated display title.' }, { name: 'directories', description: 'authorized directories, primary first; omission preserves them.' }],
+        returns: 'the updated workspace after durability.',
       },
       {
         signature: 'list(): Workspace[]',
@@ -5456,20 +5655,12 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface AccountDetails {\n    readonly profile: {\n        readonly status: \'ready\';\n        readonly value: AccountProfile;\n    } | {\n        readonly status: \'failed\';\n    };\n    readonly balance: {\n        readonly status: \'ready\';\n        readonly value: readonly AccountWallet[];\n        readonly bonusWallets: readonly AccountWallet[];\n    } | {\n        readonly status: \'failed\';\n    };\n}',
   },
   {
-    name: 'AccountLinks',
-    declaration: 'export interface AccountLinks {\n    readonly usageUrl: string;\n    readonly topUpUrl: string;\n}',
-  },
-  {
-    name: 'AccountProfile',
-    declaration: 'export interface AccountProfile {\n    readonly id: AccountUserId | null;\n    readonly name: string | null;\n    readonly contact: string | null;\n    readonly avatarUrl?: string | null;\n}',
+    name: 'AccountFailure',
+    declaration: 'export type AccountFailure = \'network\' | \'timeout\' | \'server\' | \'authorization\' | \'credentials\' | \'captcha\' | \'two-factor\' | \'protocol\' | \'storage\' | \'expired\' | \'busy\' | \'no-models\' | \'revocation\' | \'upgrade-required\' | \'usage-filter\' | \'validation\' | \'unavailable\' | \'uncertain\' | \'conflict\' | \'invoice-evidence\' | \'gateway-unavailable\' | \'account-line-unavailable\' | \'insecure-gateway\' | \'balance\' | \'model-limits\' | \'payment-gateway\';',
   },
   {
     name: 'AccountUserId',
     declaration: 'export type AccountUserId = Branded<\'AccountUserId\'>;',
-  },
-  {
-    name: 'AccountView',
-    declaration: 'export interface AccountView {\n    readonly status: \'signed-out\' | \'credential-stored\';\n    readonly links: AccountLinks;\n    readonly attempt: SignInAttemptView | null;\n}',
   },
   {
     name: 'AccountWallet',
@@ -5842,6 +6033,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ChangeResult',
     declaration: 'export interface ChangeResult {\n    changed: boolean;\n    application: \'applied\' | \'restart-required\' | \'overridden\' | \'failed\' | \'cancelled\';\n    restartReason?: RestartReason;\n    stage: \'install\' | \'enable\' | \'remove\';\n    target: string;\n    enabled?: boolean;\n    error?: ManagementError;\n    warnings?: string[];\n    packageResult?: PackageResult;\n    bundle?: string;\n    version?: string;\n    pendingBuilds?: string[];\n    approvedBuilds?: string[];\n    registries?: Registry[];\n    failedAt?: \'registry\' | \'spec-host\';\n}',
+  },
+  {
+    name: 'CheckoutView',
+    declaration: 'export interface CheckoutView {\n    readonly enabled: boolean;\n    readonly balanceDisabled: boolean;\n    readonly methods: readonly PaymentMethod[];\n    readonly plans: readonly SubscriptionPlan[];\n    readonly balanceMultiplier: number;\n    readonly subscriptionExchangeRate: number;\n    readonly bonusMode: string;\n    readonly bonusTiers: readonly {\n        readonly minimum: number;\n        readonly percent: number;\n    }[];\n    readonly notice: string;\n    readonly help: string;\n}',
   },
   {
     name: 'ChecksRollup',
@@ -6376,6 +6571,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface EveryScheduleRecord {\n    readonly id: ScheduleId;\n    readonly kind: \'every\';\n    readonly title: string;\n    readonly prompt: string;\n    readonly everySeconds: number;\n    readonly scheduledAt: string;\n}',
   },
   {
+    name: 'EvidenceFile',
+    declaration: 'export interface EvidenceFile {\n    readonly name: string;\n    readonly mime: string;\n    readonly base64: string;\n    readonly kind: \'payment\' | \'fee_payment\';\n}',
+  },
+  {
     name: 'FeedbackCategory',
     declaration: 'export type FeedbackCategory = \'task-result\' | \'instruction-following\' | \'product-interaction\' | \'service-stability\' | \'resource-cost\' | \'security-privacy-permission\' | \'other\';',
   },
@@ -6620,6 +6819,22 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface FsWriteOutcome {\n    operation: \'create\' | \'update\';\n    version: FsVersion;\n    before: string | null;\n    after: string;\n}',
   },
   {
+    name: 'GatewayEndpoint',
+    declaration: 'export interface GatewayEndpoint {\n    readonly id: GatewayId;\n    readonly name: string;\n    readonly origin: string;\n    readonly description: string;\n    readonly insecure: boolean;\n}',
+  },
+  {
+    name: 'GatewayId',
+    declaration: 'export type GatewayId = Branded<\'Sub2apiGatewayId\'>;',
+  },
+  {
+    name: 'GatewayView',
+    declaration: 'export interface GatewayView {\n    readonly endpoints: readonly GatewayEndpoint[];\n    readonly selected: GatewayId | null;\n    readonly active?: GatewayId | null;\n}',
+  },
+  {
+    name: 'GeneratedImage',
+    declaration: 'export interface GeneratedImage {\n    readonly id: ImageOutputId;\n    readonly source: string;\n    readonly revisedPrompt: string | null;\n}',
+  },
+  {
     name: 'GenerateOptions',
     declaration: 'export interface GenerateOptions<Purpose extends string = LlmRequestPurpose> {\n    provider: string;\n    model: string;\n    reasoningEffort?: ReasoningEffortId;\n    messages: RequestMessage[];\n    system?: string;\n    tools?: ToolSchema[];\n    toolHistory?: ToolHistory;\n    temperature?: number;\n    maxTokens?: number;\n    stop?: string[];\n    signal?: AbortSignal;\n    sessionId?: Branded<\'SessionId\'>;\n    purpose?: Purpose;\n}',
   },
@@ -6724,8 +6939,20 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type ImageMediaType = \'image/png\' | \'image/jpeg\' | \'image/webp\' | \'image/gif\';',
   },
   {
+    name: 'ImageOutputId',
+    declaration: 'export type ImageOutputId = Branded<\'Sub2apiImageOutputId\'>;',
+  },
+  {
+    name: 'ImageRequest',
+    declaration: 'export interface ImageRequest {\n    readonly groupId: Sub2apiGroupId;\n    readonly model: string;\n    readonly prompt: string;\n    readonly count: number;\n    readonly size: string;\n}',
+  },
+  {
     name: 'ImageRequestTarget',
     declaration: 'export interface ImageRequestTarget {\n    width: number;\n    height: number;\n    maxBytes: number;\n}',
+  },
+  {
+    name: 'ImageResult',
+    declaration: 'export interface ImageResult {\n    readonly images: readonly GeneratedImage[];\n}',
   },
   {
     name: 'ImageUploadValue',
@@ -6786,6 +7013,38 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'InvocationSourceLocation',
     declaration: 'export interface InvocationSourceLocation {\n    readonly file: string;\n    readonly line: number;\n    readonly column: number;\n}',
+  },
+  {
+    name: 'InvoiceFile',
+    declaration: 'export interface InvoiceFile {\n    readonly id: InvoiceFileId;\n    readonly name: string;\n    readonly mime: string;\n    readonly size: number;\n    readonly kind: string;\n}',
+  },
+  {
+    name: 'InvoiceFileId',
+    declaration: 'export type InvoiceFileId = Branded<\'Sub2apiInvoiceFileId\'>;',
+  },
+  {
+    name: 'InvoiceId',
+    declaration: 'export type InvoiceId = Branded<\'Sub2apiInvoiceId\'>;',
+  },
+  {
+    name: 'InvoicePage',
+    declaration: 'export interface InvoicePage {\n    readonly items: readonly InvoiceView[];\n    readonly total: number;\n}',
+  },
+  {
+    name: 'InvoiceQuote',
+    declaration: 'export interface InvoiceQuote {\n    readonly paymentAmountCents: number;\n    readonly feeCents: number;\n    readonly amountCents: number;\n}',
+  },
+  {
+    name: 'InvoiceRequest',
+    declaration: 'export interface InvoiceRequest {\n    readonly id: InvoiceId | null;\n    readonly kind: \'personal\' | \'company\';\n    readonly title: string;\n    readonly taxId: string;\n    readonly email: string;\n    readonly paymentAmount: string;\n    readonly version: number;\n    readonly requestKey: InvoiceRequestKey;\n    readonly retained: readonly InvoiceFileId[];\n    readonly files: readonly EvidenceFile[];\n}',
+  },
+  {
+    name: 'InvoiceRequestKey',
+    declaration: 'export type InvoiceRequestKey = Branded<\'Sub2apiInvoiceRequestKey\'>;',
+  },
+  {
+    name: 'InvoiceView',
+    declaration: 'export interface InvoiceView {\n    readonly id: InvoiceId;\n    readonly kind: \'personal\' | \'company\';\n    readonly title: string;\n    readonly taxId: string;\n    readonly email: string;\n    readonly amountCents: number;\n    readonly paymentAmountCents: number;\n    readonly feeCents: number;\n    readonly version: number;\n    readonly status: string;\n    readonly emailStatus: string;\n    readonly createdAt: string;\n    readonly note: string;\n    readonly files: readonly InvoiceFile[];\n}',
   },
   {
     name: 'InvokeRemoteRequest',
@@ -7344,6 +7603,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ModelCatalogModel {\n    readonly id: string;\n    readonly name: string;\n    readonly description?: string;\n    readonly reasoning?: ModelReasoning;\n    readonly badge?: LlmModelBadge;\n}',
   },
   {
+    name: 'ModelLimits',
+    declaration: 'export interface ModelLimits {\n    readonly contextWindow: number;\n    readonly maxInputTokens: number;\n    readonly maxOutputTokens: number;\n}',
+  },
+  {
     name: 'ModelMessageSource',
     declaration: 'export interface ModelMessageSource extends AssistantProviderMetadata {\n    kind: \'model\';\n}',
   },
@@ -7354,6 +7617,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ModelModalityMap',
     declaration: 'export interface ModelModalityMap {\n    text: \'text\';\n    image: \'image\';\n}',
+  },
+  {
+    name: 'ModelProtocol',
+    declaration: 'export type ModelProtocol = \'openai-completions\' | \'openai-responses\' | \'anthropic-messages\' | \'google-generative-ai\';',
+  },
+  {
+    name: 'ModelProtocolChoice',
+    declaration: 'export type ModelProtocolChoice = \'auto\' | ModelProtocol;',
   },
   {
     name: 'ModelProviderGroup',
@@ -7444,6 +7715,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type OptionalSessionSeq = SessionSeq | null;',
   },
   {
+    name: 'OrderPage',
+    declaration: 'export interface OrderPage {\n    readonly items: readonly PaymentOrder[];\n    readonly total: number;\n    readonly page: number;\n    readonly pageSize: number;\n}',
+  },
+  {
+    name: 'OrderRequest',
+    declaration: 'export interface OrderRequest {\n    readonly amount: number;\n    readonly method: string;\n    readonly kind: \'balance\' | \'subscription\';\n    readonly planId: SubscriptionPlanId | null;\n}',
+  },
+  {
     name: 'OTelEventRecord',
     declaration: 'export interface OTelEventRecord {\n    eventName: string;\n    body: string;\n    timestamp: number;\n    severityNumber?: SeverityNumber;\n    attributes?: Record<string, OTelEventScalar | Record<string, OTelEventScalar>>;\n}',
   },
@@ -7500,6 +7779,22 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface PatchHunk {\n    lineNumber: number;\n    context?: string;\n    oldLines: string[];\n    newLines: string[];\n    isEndOfFile: boolean;\n}',
   },
   {
+    name: 'PaymentLaunch',
+    declaration: 'export interface PaymentLaunch {\n    readonly id: PaymentOrderId;\n    readonly amount: number;\n    readonly payAmount: number;\n    readonly currency: string;\n    readonly expiresAt: string;\n    readonly paymentUrl: string | null;\n    readonly qrCode: string | null;\n}',
+  },
+  {
+    name: 'PaymentMethod',
+    declaration: 'export interface PaymentMethod {\n    readonly id: string;\n    readonly name: string;\n    readonly currency: string;\n    readonly minimum: number;\n    readonly maximum: number;\n    readonly feeRate: number;\n    readonly available: boolean;\n}',
+  },
+  {
+    name: 'PaymentOrder',
+    declaration: 'export interface PaymentOrder {\n    readonly id: PaymentOrderId;\n    readonly number: string;\n    readonly amount: number;\n    readonly payAmount: number;\n    readonly currency: string;\n    readonly status: string;\n    readonly kind: string;\n    readonly method: string;\n    readonly createdAt: string;\n    readonly expiresAt: string;\n}',
+  },
+  {
+    name: 'PaymentOrderId',
+    declaration: 'export type PaymentOrderId = Branded<\'Sub2apiPaymentOrderId\'>;',
+  },
+  {
     name: 'PeerAdmission',
     declaration: 'export type PeerAdmission = {\n    readonly peer: PeerScope;\n} | {\n    readonly rejection: 401 | 403;\n};',
   },
@@ -7526,6 +7821,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'PiAiRequestHeaderContext',
     declaration: 'export interface PiAiRequestHeaderContext extends Readonly<Pick<GenerateOptions<string>, \'provider\' | \'model\' | \'sessionId\' | \'purpose\'>> {\n    readonly baseURL: string;\n}',
+  },
+  {
+    name: 'PlatformFile',
+    declaration: 'export interface PlatformFile {\n    readonly name: string;\n    readonly mime: string;\n    readonly base64: string;\n}',
+  },
+  {
+    name: 'PlatformPageQuery',
+    declaration: 'export interface PlatformPageQuery {\n    readonly page: number;\n    readonly pageSize: number;\n    readonly status: string;\n}',
+  },
+  {
+    name: 'PlatformResult',
+    declaration: 'export type PlatformResult<T> = {\n    readonly ok: true;\n    readonly data: T;\n} | {\n    readonly ok: false;\n    readonly error: AccountFailure;\n};',
   },
   {
     name: 'PlatformSession',
@@ -9028,14 +9335,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type SignInAttemptId = Branded<\'SignInAttemptId\'>;',
   },
   {
-    name: 'SignInAttemptView',
-    declaration: 'export interface SignInAttemptView {\n    readonly id: SignInAttemptId;\n    readonly phase: \'initializing\' | \'waiting-browser\' | \'exchanging\' | \'committing\' | \'succeeded\' | \'cancelled\' | \'expired\' | \'failed\';\n    readonly authorizeUrl?: string;\n    readonly expiresAt?: number;\n    readonly errorCode?: SignInErrorCode;\n}',
-  },
-  {
-    name: 'SignInErrorCode',
-    declaration: 'export type SignInErrorCode = \'no-response\' | \'network\' | \'protocol\' | \'expired\' | \'storage\';',
-  },
-  {
     name: 'SkillCandidate',
     declaration: 'export interface SkillCandidate extends SkillSummary {\n    readonly rank: number;\n    readonly locator: unknown;\n    readonly metadata?: Readonly<Record<string, unknown>>;\n}',
   },
@@ -9220,6 +9519,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type StreamChunk = {\n    type: \'block-start\';\n    index: number;\n    blockType: ContentBlockType;\n} | {\n    type: \'text-delta\';\n    index: number;\n    text: string;\n} | {\n    type: \'reasoning-delta\';\n    index: number;\n    text: string;\n} | {\n    type: \'tool-call-delta\';\n    index: number;\n    id: ToolCallId;\n    name?: string;\n    argumentsDelta: string;\n} | {\n    type: \'block-end\';\n    index: number;\n    block: ContentBlock;\n} | {\n    type: \'usage\';\n    usage: TokenUsage;\n} | {\n    type: \'finish\';\n    reason: FinishReason;\n    replayState?: ReplayEnvelope;\n};',
   },
   {
+    name: 'Sub2apiGroupId',
+    declaration: 'export type Sub2apiGroupId = Branded<\'Sub2apiGroupId\'>;',
+  },
+  {
+    name: 'Sub2apiUsageId',
+    declaration: 'export type Sub2apiUsageId = Branded<\'Sub2apiUsageId\'>;',
+  },
+  {
     name: 'SubagentActivation',
     declaration: 'export interface SubagentActivation {\n    readonly childId: SessionId;\n    readonly name: string;\n    readonly messageId?: MessageId;\n    readonly result: Promise<SubagentResult>;\n    dispose(): Promise<void>;\n}',
   },
@@ -9378,6 +9685,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SubprocessTerminalSpawnSpec',
     declaration: 'export interface SubprocessTerminalSpawnSpec {\n    argv: readonly string[];\n    cwd: string;\n    env?: Record<string, string> | undefined;\n    rows: number;\n    cols: number;\n    terminalType: string;\n    shellActivity?: boolean | undefined;\n    graceMs: number;\n    signal?: AbortSignal | undefined;\n}',
+  },
+  {
+    name: 'SubscriptionPlan',
+    declaration: 'export interface SubscriptionPlan {\n    readonly id: SubscriptionPlanId;\n    readonly name: string;\n    readonly description: string;\n    readonly price: number;\n    readonly currency: string;\n    readonly validity: number;\n    readonly validityUnit: string;\n    readonly group: string;\n    readonly features: readonly string[];\n}',
+  },
+  {
+    name: 'SubscriptionPlanId',
+    declaration: 'export type SubscriptionPlanId = Branded<\'Sub2apiSubscriptionPlanId\'>;',
+  },
+  {
+    name: 'SubscriptionView',
+    declaration: 'export interface SubscriptionView {\n    readonly group: string;\n    readonly status: string;\n    readonly expiresAt: string | null;\n    readonly daily: number | null;\n    readonly weekly: number | null;\n    readonly monthly: number | null;\n}',
   },
   {
     name: 'SurfaceEvent',
@@ -9956,6 +10275,22 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface UpdateTeamTaskRequest {\n    readonly taskId: TeamTaskId;\n    readonly expectedRevision: number;\n    readonly action: TeamTaskAction;\n    readonly subject?: string;\n    readonly description?: string;\n    readonly blockedBy?: readonly TeamTaskId[];\n    readonly writeScopes?: readonly string[];\n    readonly owner?: SessionId;\n}',
   },
   {
+    name: 'UsagePage',
+    declaration: 'export interface UsagePage {\n    readonly items: readonly UsageRecord[];\n    readonly page: number;\n    readonly pageSize: number;\n    readonly total: number;\n    readonly totalPages: number;\n    readonly requests: number | null;\n    readonly tokens: number | null;\n    readonly cost: number | null;\n    readonly statisticsError?: AccountFailure;\n}',
+  },
+  {
+    name: 'UsageQuery',
+    declaration: 'export interface UsageQuery {\n    readonly page: number;\n    readonly pageSize: number;\n    readonly startDate: string;\n    readonly endDate: string;\n    readonly timezone: string;\n    readonly model: string;\n    readonly groupId: Sub2apiGroupId | null;\n    readonly stream: boolean | null;\n}',
+  },
+  {
+    name: 'UsageRecord',
+    declaration: 'export interface UsageRecord {\n    readonly id: Sub2apiUsageId;\n    readonly createdAt: string;\n    readonly model: string;\n    readonly requestId: string;\n    readonly group: string | null;\n    readonly apiKey: string | null;\n    readonly endpoint: string | null;\n    readonly inputTokens: number;\n    readonly outputTokens: number;\n    readonly cacheReadTokens: number;\n    readonly cacheWriteTokens: number;\n    readonly inputCost: number;\n    readonly outputCost: number;\n    readonly cacheReadCost: number;\n    readonly cacheWriteCost: number;\n    readonly totalCost: number;\n    readonly actualCost: number;\n    readonly multiplier: number;\n    readonly durationMs: number | null;\n    readonly firstTokenMs: number | null;\n    readonly stream: boolean;\n    readonly billingType: number;\n    readonly imageCount: number;\n}',
+  },
+  {
+    name: 'UsageResult',
+    declaration: 'export type UsageResult = {\n    readonly ok: true;\n    readonly data: UsagePage;\n} | {\n    readonly ok: false;\n    readonly error: AccountFailure;\n};',
+  },
+  {
     name: 'UserMessage',
     declaration: 'export interface UserMessage extends MessageBase {\n    readonly role: \'user\';\n}',
   },
@@ -10165,7 +10500,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'Workspace',
-    declaration: 'export interface Workspace {\n    readonly id: WorkspaceId;\n    readonly path: string;\n    readonly title: string;\n    readonly createdAt: string;\n    readonly updatedAt: string;\n    readonly sessionIds: readonly SessionId[];\n    setTitle(title: string): Promise<void>;\n    attachSession(sessionId: SessionId): Promise<void>;\n    insertSessionBefore(sessionId: SessionId, beforeSessionId?: SessionId): Promise<void>;\n    detachSession(sessionId: SessionId): Promise<void>;\n    status(): Promise<\'ok\' | \'missing-dir\'>;\n}',
+    declaration: 'export interface Workspace {\n    readonly id: WorkspaceId;\n    readonly path: string;\n    readonly directories: readonly string[];\n    readonly title: string;\n    readonly createdAt: string;\n    readonly updatedAt: string;\n    readonly sessionIds: readonly SessionId[];\n    setTitle(title: string): Promise<void>;\n    attachSession(sessionId: SessionId): Promise<void>;\n    insertSessionBefore(sessionId: SessionId, beforeSessionId?: SessionId): Promise<void>;\n    detachSession(sessionId: SessionId): Promise<void>;\n    status(): Promise<\'ok\' | \'missing-dir\'>;\n}',
   },
   {
     name: 'WorkspaceArchiveSessionRequest',
@@ -10222,6 +10557,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'WorkspaceDirectoryListing',
     declaration: 'export interface WorkspaceDirectoryListing {\n    readonly path: string;\n    readonly entries: readonly WorkspaceDirectoryEntry[];\n    readonly truncated: boolean;\n}',
+  },
+  {
+    name: 'WorkspaceEditRequest',
+    declaration: 'export interface WorkspaceEditRequest extends WorkspaceRenameRequest {\n    readonly directories: readonly string[];\n}',
   },
   {
     name: 'WorkspaceFileBytes',
@@ -10301,7 +10640,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'WorkspaceView',
-    declaration: 'export interface WorkspaceView {\n    readonly workspaceId: WorkspaceId;\n    readonly path: string;\n    readonly title: string;\n    readonly sessionIds: readonly SessionId[];\n    readonly createdAt: string;\n    readonly updatedAt: string;\n}',
+    declaration: 'export interface WorkspaceView {\n    readonly workspaceId: WorkspaceId;\n    readonly path: string;\n    readonly directories?: readonly string[];\n    readonly title: string;\n    readonly sessionIds: readonly SessionId[];\n    readonly createdAt: string;\n    readonly updatedAt: string;\n}',
   },
 ]
 
