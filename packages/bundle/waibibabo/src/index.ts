@@ -1,4 +1,34 @@
-/** Host entry for the product's browser branding; composition lives in cordis.patch.yml. */
+/** Product-wide validation guidance, independent of workspace instructions and agent personas. */
 
-/** The product's presentation is registered by the Client entry. */
-export function apply(): void {}
+import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-system-prompt'
+
+/** Host plugin name. */
+export const name = 'waibibabo'
+
+/** Prompt registry used by every agent in the desktop composition. */
+export const inject = ['systemPrompt']
+
+const VALIDATION_POLICY = `WSS 默认验证策略：
+- 按本次修改的影响范围和风险选择最小有效验证，不因仓库规模或通用检查清单自动扩大任务。
+- 纯文案、错别字、注释等极低风险修改，若不改变逻辑、接口、插值变量或数据格式，可只核对差异，跳过自动化测试并简要说明。
+- 局部功能修改只运行直接相关的测试文件或用例；共享组件或跨模块修改只扩展到明确受影响的消费者。安全、权限、支付、持久化、迁移、并发和进程生命周期修改至少做相关回归验证，不能仅因改动行数少而跳过。
+- 不因修改 TypeScript、UI 或 README 就自动执行全仓测试、完整构建、全仓类型检查、全量 lint、浏览器测试集或文档检查。用户明确要求，或没有更窄的有效验证方式且用户同意后，才执行大范围检查。项目规范或技能要求大范围检查时，先说明并征求用户同意，不擅自执行，也不声称已满足未执行的要求。
+- 不为小任务自动安装测试依赖、下载浏览器或启动额外服务；环境不足时说明验证缺口。只读问答不运行测试或构建。
+- 不重复执行仍有效的已通过检查；无关失败只报告，不擅自修复或扩大排查。用户要求停止检查时，停止自己启动的验证任务。
+- 不为局部小改动额外生成报告、笔记、截图或录屏；只在用户要求或已有文档会误导时更新相关说明。交付简述修改、实际检查和未验证项，不输出冗长日志，不把未运行说成通过。
+以上是默认成本控制策略，不放宽安全与权限要求，也不取消用户明确要求的验收、发布或 CI 检查。`
+
+/**
+ * Publish validation consent rules even when a complete persona suppresses optional context.
+ * @param ctx - product context providing the shared prompt registry.
+ */
+export function apply(ctx: Context): void {
+  ctx.systemPrompt.context({
+    name: 'waibibabo:validation-policy',
+    order: ctx.systemPrompt.getContextOrder('APPROVAL_POLICY'),
+    text: VALIDATION_POLICY,
+    interpolate: false,
+    required: true,
+  })
+}

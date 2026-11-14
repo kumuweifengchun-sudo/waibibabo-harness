@@ -37,7 +37,9 @@ kind: "package-bundle"
 <details>
 <summary>实现细节 — 点击展开</summary>
 
-产品组合通过 `system-prompt.harnessIdentity` 将默认助手身份设为 Waibibabo Harnesss（WSS），独立于 Agent 预设的 persona 前缀。产品禁用 `harness-dev-context`，不注入上游产品的源码位置与 GUI 开发说明；工具规则和任务工作区上下文仍然保留。声明完整提示词的预设继续使用其自定义内容。
+产品组合通过 `system-prompt.harnessIdentity` 将默认助手身份设为 Waibibabo Harnesss（WSS），独立于 Agent 预设的 persona 前缀。产品禁用 `harness-dev-context`，不注入上游产品的源码位置与 GUI 开发说明；工具规则和任务工作区上下文仍然保留。声明完整提示词的预设继续使用其自定义系统提示词。
+
+Host 插件通过必需的运行上下文注入[默认验证策略](src/index.ts)，不依赖用户工作区的规则文件。普通预设、关闭可选上下文的 Minimal 预设及继承该组合的子代理均接收策略：极低风险修改可以跳过自动化测试，局部功能只验证相关范围，大范围检查须由用户要求或同意；缺少环境时报告缺口，不为小任务自动安装测试依赖。该策略是模型行为指导，不是命令拦截器，不放宽安全要求，也不取消用户明确要求的验收。产品更新后随新请求的上下文生效；卸载插件撤销贡献。
 
 [配置补丁](cordis.patch.yml) 禁用官方账号登录、对应的模型路由与账号界面、官方品牌装饰，以及上游产品遥测。补丁挂载产品品牌与 Sub2API 账号提供方，并关闭独立 API 密钥引导弹窗。基础层和 Web 层继续提供本地工具、会话存储和 Skills。[共享产品配置](../../llm/llm/src/waibibabo-product.json) 统一管理产品名称、简称、独立版本、应用标识、主目录和更新策略；界面与 `wss/<version>` 请求头使用同一版本。源码工具通过 [product.ts](src/product.ts) 读取配置，构建时将其值内联到桌面外壳和品牌组件；共享 JSON 的编译副本以 `lib/types/waibibabo-product.json` 随 LLM 包发布。
 
@@ -57,11 +59,11 @@ kind: "package-bundle"
 
 #### 模型可见内容
 
-`system-prompt.harnessIdentity` 将默认助手身份设为 Waibibabo Harnesss（WSS），保留工作区上下文及已有工具指令，不增加工具。
+`system-prompt.harnessIdentity` 将默认助手身份设为 Waibibabo Harnesss（WSS），保留工作区上下文及已有工具指令，不增加工具。默认验证策略以用户角色的必需运行上下文发送，不改写预设的完整系统提示词。
 
 #### Token 影响
 
-产品身份随系统提示词发送，每次请求占用少量输入 token。
+产品身份随系统提示词发送；验证策略随运行上下文进入请求，增加固定的输入 token 开销，避免模型默认扩展到无关的大范围检查。
 
 #### KV Cache 影响
 
