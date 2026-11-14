@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { JSON_SCHEMA, load as loadYaml } from 'js-yaml'
 import { rcompare } from 'semver'
 import { docsPages } from '../website/docs.ts'
+import { CHINESE_PRODUCT_UPGRADE_GUIDE } from './product-chinese-docs.ts'
 
 /** Repository root, resolved from this script rather than the invoking directory. */
 const REPOSITORY_ROOT = fileURLToPath(new URL('..', import.meta.url))
@@ -78,6 +79,7 @@ interface IndexedGuide {
   readonly title: string
   readonly summary: string
   readonly summaryZh: string
+  readonly chineseOnly: boolean
 }
 
 /**
@@ -85,7 +87,7 @@ interface IndexedGuide {
  * @param source - Documentation root holding the guides.
  * @param files - Staged source-relative paths.
  * @returns the index Markdown; without staged guides it holds only the preamble.
- * @throws When a guide lacks its Chinese counterpart, a `description`, or a level-one title.
+ * @throws When a bilingual guide lacks its Chinese counterpart, or any guide lacks a `description` or level-one title.
  */
 async function upgradeGuideIndex(source: string, files: readonly string[]): Promise<string> {
   const versions = new Map<string, IndexedGuide[]>()
@@ -93,10 +95,11 @@ async function upgradeGuideIndex(source: string, files: readonly string[]): Prom
     const match = /^upgrade-guide\/v(?<version>[^/]+)\/(?<item>[^/]+)\/guide\.md$/u.exec(file)?.groups
     if (match?.version === undefined || match.item === undefined) continue
     const { version, item } = match
-    const english = await guideHeading(join(source, file))
-    const chinese = await guideHeading(join(source, file.replace(/\.md$/u, '.zh.md')))
+    const primary = await guideHeading(join(source, file))
+    const chineseOnly = `docs/${file}` === CHINESE_PRODUCT_UPGRADE_GUIDE
+    const chinese = chineseOnly ? primary : await guideHeading(join(source, file.replace(/\.md$/u, '.zh.md')))
     const guides = versions.get(version) ?? []
-    guides.push({ item, title: english.title, summary: english.description, summaryZh: chinese.description })
+    guides.push({ item, title: primary.title, summary: primary.description, summaryZh: chinese.description, chineseOnly })
     versions.set(version, guides)
   }
   const cell = (text: string): string => text.replace(/\s+/gu, ' ').trim().replaceAll('|', '\\|')
@@ -111,7 +114,9 @@ async function upgradeGuideIndex(source: string, files: readonly string[]): Prom
     lines.push('', `## v${version}`, '', '| Item | Summary | 摘要 | English | 中文 |', '| --- | --- | --- | --- | --- |')
     for (const guide of guides) {
       const directory = `v${version}/${guide.item}`
-      lines.push(`| ${cell(guide.title)} | ${cell(guide.summary)} | ${cell(guide.summaryZh)} | [${directory}/guide.md](${directory}/guide.md) | [${directory}/guide.zh.md](${directory}/guide.zh.md) |`)
+      const english = guide.chineseOnly ? '—' : `[${directory}/guide.md](${directory}/guide.md)`
+      const chinesePath = `${directory}/${guide.chineseOnly ? 'guide.md' : 'guide.zh.md'}`
+      lines.push(`| ${cell(guide.title)} | ${guide.chineseOnly ? '—' : cell(guide.summary)} | ${cell(guide.summaryZh)} | ${english} | [${chinesePath}](${chinesePath}) |`)
     }
   }
   return `${lines.join('\n')}\n`

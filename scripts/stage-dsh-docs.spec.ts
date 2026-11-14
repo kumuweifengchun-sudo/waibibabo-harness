@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanStagedDshDocs, publishedDocuments, stageDshDocs } from './stage-dsh-docs.ts'
+import { CHINESE_PRODUCT_UPGRADE_GUIDE } from './product-chinese-docs.ts'
 
 const roots: string[] = []
 
@@ -102,6 +103,26 @@ describe('documentation staging', () => {
     for (const file of readdirSync(join(import.meta.dirname, '..', 'docs/upgrade-guide'), { recursive: true, encoding: 'utf8' })) {
       if (file.endsWith('guide.md')) expect(index).toContain(`](${file.split('\\').join('/')})`)
     }
+  })
+
+  it('indexes the declared Chinese-only product guide without an English link or invented sibling', async () => {
+    const source = join(temporaryRoot(), 'docs')
+    const destination = join(temporaryRoot(), 'cli', 'docs')
+    const relative = CHINESE_PRODUCT_UPGRADE_GUIDE.slice('docs/'.length)
+    const indexPath = relative.slice('upgrade-guide/'.length)
+    write(source, relative, '---\nkind: upgrade-guide\ndescription: "中文产品说明。"\n---\n# 产品迁移\n')
+    await stageDshDocs(source, destination, new Set())
+    expect(readFileSync(join(destination, 'upgrade-guide/README.md'), 'utf8'))
+      .toContain(`| 产品迁移 | — | 中文产品说明。 | — | [${indexPath}](${indexPath}) |`)
+    expect(existsSync(join(destination, relative))).toBe(true)
+    expect(existsSync(join(destination, relative.replace(/\.md$/u, '.zh.md')))).toBe(false)
+  })
+
+  it('still rejects an undeclared guide missing its Chinese counterpart', async () => {
+    const source = join(temporaryRoot(), 'docs')
+    const destination = join(temporaryRoot(), 'cli', 'docs')
+    write(source, 'upgrade-guide/v0.1.0/change/guide.md', '---\ndescription: "Change."\n---\n# Change\n')
+    await expect(stageDshDocs(source, destination, new Set())).rejects.toThrow(/guide\.zh\.md/u)
   })
 
   it('replaces a previous copy instead of merging into it', async () => {
