@@ -69,6 +69,21 @@ export interface DelegationModelRequest {
 }
 
 /**
+ * Normalize optional model fields at the tool JSON boundary. Blank placeholders
+ * select no override; non-blank identifiers retain their exact values.
+ * @param request - Schema-validated model-facing fields.
+ * @returns Route fields with empty and whitespace-only values omitted.
+ */
+export function parseDelegationModelRequest(request: DelegationModelRequest): DelegationModelRequest {
+  const present = (value: string | undefined): value is string => value !== undefined && value.trim().length > 0
+  return {
+    ...present(request.provider) ? { provider: request.provider } : {},
+    ...present(request.model) ? { model: request.model } : {},
+    ...present(request.reasoning_effort) ? { reasoning_effort: request.reasoning_effort } : {},
+  }
+}
+
+/**
  * Whether a call explicitly selects any child LLM value.
  * @param request - Model-facing route fields from the tool call.
  * @returns Whether at least one route or effort field is present.
@@ -79,19 +94,12 @@ export function hasDelegationModelRequest(request: DelegationModelRequest): bool
     || request.reasoning_effort !== undefined
 }
 
-/** Reject an empty model-facing route value at the tool JSON boundary. */
-function assertNonEmpty(value: string | undefined, field: keyof DelegationModelRequest): void {
-  if (value !== undefined && value.length === 0) {
-    throw new Error(`child LLM \`${field}\` must be non-empty`)
-  }
-}
-
 /**
  * Validate explicit selection against the Session policy and merge it over child defaults.
  * Explicit selection requires both provider and model; an omitted effort then
  * uses the selected model's default, even when the route is unchanged.
  * @param configured - Tool-instance child defaults.
- * @param request - Model-facing route override.
+ * @param request - Model-facing route override after blank-field normalization.
  * @param enabled - Whether this tool instance permits model-facing selection.
  * @param policy - Session allowlist; omission permits only the current parent route.
  * @param parentOptions - Current parent route used when no policy is recorded.
@@ -108,9 +116,6 @@ export function requestedAgentOptions(
   if (!enabled) {
     throw new Error('child model selection is disabled for this tool instance')
   }
-  assertNonEmpty(request.provider, 'provider')
-  assertNonEmpty(request.model, 'model')
-  assertNonEmpty(request.reasoning_effort, 'reasoning_effort')
   if (request.provider === undefined || request.model === undefined) {
     throw new Error(request.reasoning_effort === undefined
       ? 'child LLM `provider` and `model` must be supplied together'

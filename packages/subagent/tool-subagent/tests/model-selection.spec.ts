@@ -424,14 +424,56 @@ describe('dsh-tool-subagent model selection', () => {
   })
 
   it.each([
-    { provider: '', model: 'fast-model', expected: '`provider` must be non-empty' },
-    { provider: 'alpha', model: '', expected: '`model` must be non-empty' },
-    { reasoning_effort: '', expected: '`reasoning_effort` must be non-empty' },
-  ])('rejects empty model-facing values', async ({ expected, ...selection }) => {
-    const ctx = await setup({ provider: 'mock', withModelSelection: true })
-    const result = await callSubagent(ctx, { description: 'empty route', prompt: 'do it', ...selection })
+    { provider: '', model: 'fast-model' },
+    { provider: 'alpha', model: '' },
+    { provider: ' \t', model: 'fast-model' },
+  ])('rejects a partially blank route before child creation', async (selection) => {
+    const started = vi.fn()
+    const ctx = await setup({ provider: 'mock', withModelSelection: true }, { onStart: started })
+    const result = await callSubagent(ctx, { description: 'partial route', prompt: 'do it', ...selection })
     expect(result.isError).toBe(true)
-    expect(text(result)).toContain(expected)
+    expect(text(result)).toContain('`provider` and `model` must be supplied together')
+    expect(started).not.toHaveBeenCalled()
+  })
+
+  it.each([true, false])('inherits defaults for blank route placeholders with model selection %s', async (withModelSelection) => {
+    const requests: SubagentStartRequest[] = []
+    const ctx = await setup({ provider: 'mock', withModelSelection }, { onStart: (request) => { requests.push(request) } })
+    const adapter = new MockAdapter([])
+    const resolve = vi.spyOn(adapter, 'resolveModel')
+    ctx.llm.registerAdapter(['alpha'], adapter)
+    for (const blank of ['', ' \t\n']) {
+      const result = await callSubagent(ctx, {
+        description: 'inherit route', prompt: 'do it', provider: blank, model: blank, reasoning_effort: blank,
+      })
+      expect(result.isError, text(result)).toBe(false)
+    }
+    expect(requests).toHaveLength(2)
+    expect(requests.every(request => request.agentOptions === undefined)).toBe(true)
+    expect(resolve).not.toHaveBeenCalled()
+  })
+
+  it('uses the selected model default when its effort placeholder is blank', async () => {
+    const requests: SubagentStartRequest[] = []
+    const ctx = await setup({
+      provider: 'mock', withModelSelection: true,
+      agentOptions: { reasoningEffort: ReasoningEffortId('low') },
+    }, { onStart: (request) => { requests.push(request) } })
+    ctx.llm.registerAdapter(['alpha'], new MockAdapter([], REASONING))
+    const result = await callSubagent(ctx, {
+      description: 'default effort', prompt: 'do it', provider: 'alpha', model: 'fast-model', reasoning_effort: '',
+    })
+    expect(result.isError, text(result)).toBe(false)
+    expect(requests[0]?.agentOptions).toEqual({ provider: 'alpha', model: 'fast-model' })
+  })
+
+  it('rejects an effort-only selection with blank route placeholders', async () => {
+    const ctx = await setup({ provider: 'mock', withModelSelection: true })
+    const result = await callSubagent(ctx, {
+      description: 'missing route', prompt: 'do it', provider: '', model: '', reasoning_effort: 'low',
+    })
+    expect(result.isError).toBe(true)
+    expect(text(result)).toContain('`reasoning_effort` requires both `provider` and `model`')
   })
 
   it('uses the LLM runtime for provider and reasoning-effort validation before child creation', async () => {
