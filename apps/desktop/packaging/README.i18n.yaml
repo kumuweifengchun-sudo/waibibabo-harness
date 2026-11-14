@@ -12,8 +12,8 @@
   en: e98e516b9e1bd0f4
   zh: 1a2abd7d89ef78a1
 /desktop-packaging/table-of-contents:
-  en: a6203dc2e690c7e1
-  zh: 07b516549b8e3328
+  en: 1340f9eae87a4e13
+  zh: 9c41ccc27a8fe68b
 /desktop-packaging/choose-a-build-path:
   en: 0b35c7471c09b27a
   zh: cc4a382b99fc3210
@@ -24,8 +24,11 @@
   en: 5b4f0f80a117f202
   zh: ff05be196c181087
 /desktop-packaging/windows-actions-packaging:
-  en: b39449c2f945cab9
-  zh: a742ba9efa282be8
+  en: cd84f65a44be29d9
+  zh: 11f9a42d4ad66d94
+/desktop-packaging/macos-github-hosted-test-packages:
+  en: ffe78ba36bb79736
+  zh: d2b7086143e7cb9c
 /desktop-packaging/macos-self-hosted-packaging:
   en: b7c6668f451d2e16
   zh: d3125c2bb6cf8e7b

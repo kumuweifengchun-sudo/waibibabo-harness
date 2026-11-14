@@ -16,6 +16,7 @@ Build Desktop installers locally or through Windows or macOS Actions, choose dep
 - [Release versions](#release-versions)
 - [Configuration and local builds](#configuration-and-local-builds)
 - [Windows Actions packaging](#windows-actions)
+- [macOS GitHub-hosted test packages](#macos-hosted-actions)
 - [macOS self-hosted packaging](#macos-actions)
 - [Unsigned Windows test installer](#unsigned-windows-test-installer)
 - [Local macOS DMG without release signing](#local-macos-dmg-without-release-signing)
@@ -122,6 +123,18 @@ For cache measurements, `cache_namespace` selects a retained subdirectory for bo
 The dependency-install and packaging steps normalize their own shell to normal CPU, I/O and memory priority before launching children. The priority helper is copied from the exact workflow commit into a run-specific temporary directory, independently of the selected product source. A missing helper stops CI setup; unavailable priority adjustment emits a warning and marks scheduling unsuitable for performance comparison, but does not stop packaging. This does not modify the runner task or other processes. Version, preset and retained-artifact adapters remain tied to product source and its formats.
 
 Installer uploads store the already-compressed release files without ZIP recompression; this preserves installer bytes and signatures. Diagnostic uploads retain their ordinary compression.
+
+<a id="macos-hosted-actions"></a>
+
+## macOS GitHub-hosted test packages
+
+The [unsigned GitHub-hosted workflow](../../../.github/workflows/macos-package-hosted.yml) builds without a self-hosted Mac, machine presets, Apple credentials, or `DESKTOP_PUBLISH_RUNNERS`. Windows developers can dispatch it from GitHub Actions after pushing the workflow and source. Cloud packaging and installation require macOS verification; Windows adapter checks do not qualify an installer.
+
+1. Select **Package Desktop · macOS · GitHub hosted (unsigned)** in Actions and choose the source branch under **Use workflow from**.
+2. Choose `architecture=all` for both Apple Silicon and Intel, or select `arm64` or `x64`. Each architecture uses a separate native GitHub runner. `version_mode=build-number` appends the UTC date, run number and attempt to the Waibibabo product version; `follow-dsh` selects that product version, and `manual` requires a matching `build_version`.
+3. Run the workflow. After a successful build, download `waibibabo-macos-<arch>-<version>-unsigned` from its **Artifacts**. It contains the DMG, application ZIP, and `SHA256SUMS.txt`; retain the packaged archives to preserve macOS file metadata. Installers and available packaging logs expire after 14 days.
+
+These packages are unsigned and not notarized, so macOS may block downloaded copies. Use them for internal testing. This workflow does not publish GitHub releases, upload to the existing release service, or produce automatic-update feeds. Use the [self-hosted signing flow](#macos-actions) when preparing a signed release; packaging success does not establish installation or feature acceptance on a Mac.
 
 <a id="macos-actions"></a>
 

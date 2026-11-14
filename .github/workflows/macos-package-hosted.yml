@@ -1,0 +1,109 @@
+name: Package Desktop · macOS · GitHub hosted (unsigned)
+
+on:
+  workflow_dispatch:
+    inputs:
+      architecture:
+        description: '目标架构：all 同时构建 Apple Silicon 和 Intel'
+        type: choice
+        options: [all, arm64, x64]
+        default: all
+        required: true
+      version_mode:
+        description: '版本：build-number 追加构建编号；follow-dsh 使用产品版本；manual 手填'
+        type: choice
+        options: [build-number, follow-dsh, manual]
+        default: build-number
+        required: true
+      build_version:
+        description: '仅 manual 时填写完整版本，须匹配当前源码的产品版本'
+        type: string
+        default: ''
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-desktop-hosted-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: macOS ${{ matrix.arch }} / unsigned
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: ${{ fromJSON(inputs.architecture == 'all' && '["arm64","x64"]' || format('["{0}"]', inputs.architecture)) }}
+    runs-on: ${{ matrix.arch == 'arm64' && 'macos-15' || 'macos-15-intel' }}
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: bash
+    env:
+      DSH_TELEMETRY_DISABLED: '1'
+      DSH_DESKTOP_TARGET_PLATFORM: darwin
+      DSH_DESKTOP_TARGET_ARCH: ${{ matrix.arch }}
+      PACKAGE_VERSION_MODE: ${{ inputs.version_mode }}
+      PACKAGE_BUILD_VERSION: ${{ inputs.build_version }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        id: checkout
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v5.0.0
+        with:
+          dest: ${{ runner.temp }}/setup-pnpm-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Configure package cache
+        run: echo "DSH_DESKTOP_PACKAGE_CACHE_DIR=$RUNNER_TEMP/dsh-desktop-package-cache" >> "$GITHUB_ENV"
+
+      - name: Resolve unsigned build settings
+        id: settings
+        run: node apps/desktop/scripts/prepare-macos-hosted-ci.mjs
+
+      - name: Check unsigned packaging configuration and toolchain
+        env:
+          PACKAGE_VERSION: ${{ steps.settings.outputs.version }}
+        run: pnpm run "package:desktop:mac:${DSH_DESKTOP_TARGET_ARCH}:unsigned" --check --build-version "$PACKAGE_VERSION"
+
+      - name: Build unsigned installers
+        env:
+          PACKAGE_VERSION: ${{ steps.settings.outputs.version }}
+        run: pnpm run "package:desktop:mac:${DSH_DESKTOP_TARGET_ARCH}:unsigned" --build-version "$PACKAGE_VERSION"
+
+      - name: Record installer checksums
+        working-directory: apps/desktop/.desktop-build/targets/mac-${{ matrix.arch }}/unsigned-artifacts
+        run: shasum -a 256 ./*.dmg ./*.zip > SHA256SUMS.txt
+
+      # Upload packaged archives; uploading the expanded .app would lose Unix file metadata.
+      - name: Upload unsigned installers
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: waibibabo-macos-${{ matrix.arch }}-${{ steps.settings.outputs.version }}-unsigned
+          path: |
+            apps/desktop/.desktop-build/targets/mac-${{ matrix.arch }}/unsigned-artifacts/*.dmg
+            apps/desktop/.desktop-build/targets/mac-${{ matrix.arch }}/unsigned-artifacts/*.zip
+            apps/desktop/.desktop-build/targets/mac-${{ matrix.arch }}/unsigned-artifacts/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload packaging diagnostics
+        if: always() && steps.checkout.outcome == 'success'
+        continue-on-error: true
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: macos-hosted-${{ matrix.arch }}-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: apps/desktop/.desktop-build/packaging-runs/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14

@@ -16,6 +16,7 @@ description: "在本地或 Windows／macOS Actions 中生成 Desktop 安装包�
 - [发布版本](#release-versions)
 - [配置与本地构建](#configuration-and-local-builds)
 - [Windows Actions 打包](#windows-actions)
+- [macOS GitHub 托管测试包](#macos-hosted-actions)
 - [macOS 自托管打包](#macos-actions)
 - [未签名 Windows 测试安装包](#unsigned-windows-test-installer)
 - [无发布签名的本地 macOS DMG](#local-macos-dmg-without-release-signing)
@@ -122,6 +123,18 @@ runner 的受监督启动和恢复见 [Windows runner 机器准备](../windows-s
 依赖安装和打包步骤在启动子进程前，将自身 shell 的 CPU、I/O 和内存优先级调整为普通值。优先级辅助脚本从 workflow 的精确提交复制到本轮临时目录，与选中的产品源码分离。缺失辅助脚本会终止 CI 准备；无法调整优先级时明确告警并标记调度条件不适合性能对比，但继续打包。这不会修改 runner 任务或其他进程。版本、preset 和产物留存适配器仍跟随产品源码及其格式。
 
 安装器上传直接存储已经压缩的发布文件，不再进行 ZIP 二次压缩；安装器字节和签名保持不变。诊断日志上传保留通常的压缩方式。
+
+<a id="macos-hosted-actions"></a>
+
+## macOS GitHub 托管测试包
+
+[GitHub 托管未签名工作流](../../../.github/workflows/macos-package-hosted.yml)不依赖自托管 Mac、机器 preset、Apple 凭据或 `DESKTOP_PUBLISH_RUNNERS`。Windows 开发者将工作流和源码推送后，可从 GitHub Actions 手动运行。云端打包和安装需要 macOS 验证；Windows 适配器检查不能作为安装包验收依据。
+
+1. 在 Actions 中选择 **Package Desktop · macOS · GitHub hosted (unsigned)**，在 **Use workflow from** 中选择源码分支。
+2. 选择 `architecture=all` 同时构建 Apple Silicon 和 Intel，或单独选择 `arm64`、`x64`。各架构使用独立的同架构 GitHub runner。`version_mode=build-number` 在歪比巴卜产品版本后追加 UTC 日期、运行编号和尝试次数；`follow-dsh` 使用该产品版本，`manual` 要求填写匹配的 `build_version`。
+3. 运行工作流。成功后从运行页的 **Artifacts** 下载 `waibibabo-macos-<arch>-<version>-unsigned`。其中包含 DMG、应用 ZIP 和 `SHA256SUMS.txt`；保留打包归档以保存 macOS 文件元数据。安装包和可用的打包日志保留 14 天。
+
+这些安装包未签名、未公证，macOS 可能拦截下载副本，仅用于内部测试。此工作流不发布 GitHub release、不上传现有发布服务，也不生成自动更新源。准备签名发布时使用[自托管签名流程](#macos-actions)；打包成功不代表已通过 Mac 安装或功能验收。
 
 <a id="macos-actions"></a>
 
