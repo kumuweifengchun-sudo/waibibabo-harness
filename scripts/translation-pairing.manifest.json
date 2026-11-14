@@ -1,5 +1,6 @@
 {
   "excluded": [
+    "README.md",
     "apps/desktop/WAIBIBABO.md",
     "packages/credentials/sub2api-account/README.md",
     "packages/bundle/waibibabo/README.md",
