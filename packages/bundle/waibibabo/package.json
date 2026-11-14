@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-waibibabo",
-  "version": "0.2.2-rc.1",
+  "version": "0.2.2-rc.3",
   "description": "歪比巴卜桌面账号与模型配置",
   "type": "module",
   "license": "MIT",
