@@ -1052,6 +1052,21 @@ describe('sandbox escalation API (write/edit)', () => {
     }])
   })
 
+  it('restricts a narrower write to the Session workspace without requesting approval', async () => {
+    const { ctx, fs } = await setupConfining({ approval: true })
+    const approval = vi.fn(() => Promise.resolve('rejected' as const))
+    ctx.on('approval/request', approval)
+    const result = await call(ctx, 'write', {
+      file_path: 'a.txt', content: 'x', sandbox_permissions: 'workspace-write', justification: 'limit this write to the workspace',
+    }, escalationAgent([{ type: 'sandbox/mode', data: { mode: 'danger-full-access' } }]))
+    expect(result.isError, text(result)).toBe(false)
+    expect(fs.files.get('key:a.txt')).toBe('x')
+    expect(fs.stamped).toEqual([{
+      mode: 'workspace-write', workspaceRoot: '/session-project', sessionId: SessionId('sess-fs-esc'),
+    }])
+    expect(approval).not.toHaveBeenCalled()
+  })
+
   it.each(['workspace-write', 'danger-full-access'] as const)('writes and edits under %s with absent or blank unused reasons', async (mode) => {
     const { ctx, fs } = await setupConfining({ approval: true })
     try {

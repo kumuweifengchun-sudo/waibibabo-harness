@@ -161,8 +161,9 @@ export interface EscalationRequest {
 
 /**
  * Resolve a sandbox permission request before execution. Repeating the call's
- * effective mode returns it without approval. A strictly wider mode requires
- * approval and applies only to this call. Narrower or unsupported targets,
+ * effective mode returns it without approval. Requesting workspace-write under
+ * danger-full-access confines this call without approval. A strictly wider mode
+ * requires approval and applies only to this call. Unsupported targets,
  * missing approval services or agents for widening, and non-grant outcomes
  * throw before execution.
  * @param request - the escalation to judge (see {@link EscalationRequest}).
@@ -172,6 +173,7 @@ export interface EscalationRequest {
 export async function approveEscalation<A, C>(request: EscalationRequest, approval: EscalationApproval<A, C>): Promise<SandboxMode> {
   const { requestedMode: mode, effectiveMode, justification, subject } = request
   if (mode === effectiveMode) return effectiveMode
+  if (mode === 'workspace-write' && effectiveMode === 'danger-full-access') return mode
   // Strict widening is an EXECUTION check against the call's effective mode —
   // deliberately not a schema constraint (the enum is the closed target
   // vocabulary; the effective mode is per-call truth).
