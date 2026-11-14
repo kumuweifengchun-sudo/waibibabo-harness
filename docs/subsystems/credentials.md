@@ -12,7 +12,7 @@ The desktop provider's `PlatformResult<T>` carries a display-safe value or an ac
 
 The [Sub2API account provider](../../packages/credentials/sub2api-account/README.md) owns desktop platform login and group-scoped inference leases. Its `Sub2apiGroupId` and `Sub2apiUserId` are branded string identifiers. Its display-safe `AccountView` carries login progress, account details, available groups, selected models, usage, and a localized failure category; tokens stay in the Host credential store.
 
-`ModelProtocolChoice` selects automatic routing or an explicit Responses, Messages, Chat Completions, or Gemini protocol for one group/model pair. `ModelLimits` supplies context, input and output budgets as account defaults or group/model overrides; absent overrides inherit the defaults. `UsageQuery` carries pagination, an inclusive local-date range of at most 90 days, timezone, model, group and stream filters; identity comes only from the stored grant. `UsageResult` returns display-safe records and server-calculated totals or a localized failure category; unavailable totals leave the records visible with a separate statistics error. The Host strips credentials and administrator fields, and the client drops retained records when the account changes. See the [account package](../../packages/credentials/sub2api-account/README.md) for persistence and endpoint requirements.
+`ModelProtocolChoice` selects automatic routing or an explicit Responses, Messages, Chat Completions, or Gemini protocol for one group/model pair. `ModelTransport` selects `sse` or `websocket` for a Responses model; `ModelProtocolView.transport` is null for other protocols. `ModelLimits` supplies context, input and output budgets as account defaults or group/model overrides; absent overrides inherit the defaults. `UsageQuery` carries pagination, an inclusive local-date range of at most 90 days, timezone, model, group and stream filters; identity comes only from the stored grant. `UsageResult` returns display-safe records and server-calculated totals or a localized failure category; unavailable totals leave the records visible with a separate statistics error. The Host strips credentials and administrator fields, and the client drops retained records when the account changes. See the [account package](../../packages/credentials/sub2api-account/README.md) for persistence and endpoint requirements.
 
 A reference names one credential as a POSIX-style environment-variable name. The brand prevents callers from mixing credential references with other strings passed between packages or processes; construction validates the shell-identifier syntax.
 
@@ -409,6 +409,14 @@ Owns account credentials, browser attempts and the model routes they authorize.
  * @returns state after durable storage and model registration; already prepared requests keep their original protocol.
  */
 @Remote setModelProtocol(groupId: Sub2apiGroupId, model: string, protocol: ModelProtocolChoice): Promise<AccountView>
+
+/** Save the Responses transport for a model in the selected group.
+ * @param groupId - Group shown when the client rendered the control.
+ * @param model - Exact id of a current-group model using Responses.
+ * @param transport - HTTP streaming or WebSocket with safe HTTP fallback.
+ * @returns state after persistence; subsequent requests use the selection and active requests may finish.
+ */
+@Remote setModelTransport(groupId: Sub2apiGroupId, model: string, transport: ModelTransport): Promise<AccountView>
 
 /** Save the allocation inherited by models without an override.
  * @param limits - Context budget and disjoint input/output caps.

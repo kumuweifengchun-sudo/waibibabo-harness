@@ -2,7 +2,7 @@
 import { useId, useState } from 'react'
 import { Button, Input, Modal, IconUserOutlineMedium } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { FactoryComponentPropsOf, HostObservable, InjectFace, PropsLocale, PropsRenderFactories, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { AccountConnectionView, AccountView, ModelLimits, ModelProtocolChoice, Sub2apiGroupId, UsageQuery } from '../types.ts'
+import type { AccountConnectionView, AccountView, ModelLimits, ModelProtocolChoice, ModelTransport, Sub2apiGroupId, UsageQuery } from '../types.ts'
 import { failureKeys } from './errors.ts'
 import type { UsageState } from './usage-state.ts'
 import css from './AccountSection.module.css'
@@ -31,6 +31,7 @@ export interface AccountInjected {
   showUsage: (visible: boolean) => void
   loadUsage: (query: UsageQuery) => Promise<void>
   setProtocol: (group: Sub2apiGroupId, model: string, protocol: ModelProtocolChoice) => Promise<void>
+  setTransport: (group: Sub2apiGroupId, model: string, transport: ModelTransport) => Promise<void>
   setModelLimits: (limits: ModelLimits) => Promise<void>
   setModelLimitOverride: (group: Sub2apiGroupId, model: string, limits: ModelLimits | null) => Promise<void>
 }

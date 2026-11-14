@@ -1,4 +1,4 @@
-/** Platform groups, model protocols and inference addresses in the existing Models module. */
+/** Platform groups, model protocols, Responses transports and inference addresses in Models settings. */
 import { useEffect, useId, useState } from 'react'
 import { Button, Input } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {} from '@deepseek-ai/dsh-client-ui-settings-models/client'
@@ -74,6 +74,7 @@ export function ModelSection(props: PlatformProps) {
   const account = props.useAccount(value => value)
   const platform = props.usePlatform(value => value)
   const groupId = useId()
+  const transportHintId = useId()
   const [editedModel, editModel] = useState('')
   const owner = account.view?.profile?.id
   const catalog = account.view?.models
@@ -97,14 +98,26 @@ export function ModelSection(props: PlatformProps) {
       </select>
       {!view.groups.length && <p className={css.muted}>{t('noGroups')}</p>}
     </div>
-    <div className={css.models}>{view.modelProtocols.map(model => <label className={css.modelRow} key={model.model}>
-      <span>{model.model}</span><select value={model.choice} disabled={account.busy || platform.loading.gateways}
-        aria-label={`${model.model} · ${t('modelProtocol')}`} onChange={(event) => {
-          const choice = choices.find(value => value === event.target.value)
-          if (choice !== undefined && view.selectedGroup !== null) void props.setProtocol(view.selectedGroup, model.model, choice)
-        }}>{choices.map(choice => <option key={choice} value={choice}>{choice === 'auto' ? `${t('protocolAuto')}（${t(labels[model.effective])}）` : t(labels[choice])}</option>)}</select>
-    </label>)}</div>
+    <div className={css.models}>{view.modelProtocols.map(model => <div className={css.modelRow} key={model.model}>
+      <span>{model.model}</span><div className={css.modelControls}>
+        <select value={model.choice} disabled={account.busy || platform.loading.gateways}
+          aria-label={`${model.model} · ${t('modelProtocol')}`} onChange={(event) => {
+            const choice = choices.find(value => value === event.target.value)
+            if (choice !== undefined && view.selectedGroup !== null) void props.setProtocol(view.selectedGroup, model.model, choice)
+          }}>{choices.map(choice => <option key={choice} value={choice}>{choice === 'auto' ? `${t('protocolAuto')}（${t(labels[model.effective])}）` : t(labels[choice])}</option>)}</select>
+        {model.transport !== null && <select value={model.transport} disabled={account.busy || platform.loading.gateways}
+          aria-label={`${model.model} · ${t('modelTransport')}`} aria-describedby={transportHintId} onChange={(event) => {
+            const transport = event.target.value
+            if ((transport === 'sse' || transport === 'websocket') && view.selectedGroup !== null) {
+              void props.setTransport(view.selectedGroup, model.model, transport)
+            }
+          }}><option value="sse">{t('transportSse')}</option><option value="websocket">{t('transportWebSocket')}</option></select>}
+      </div>
+    </div>)}</div>
     <p className={css.muted}>{t('modelHint')}</p><p className={css.muted}>{t('protocolHint')}</p>
+    {view.modelProtocols.some(model => model.transport !== null) && <div id={transportHintId} className={css.transportHints}>
+      <p className={css.muted}>{t('transportSseHint')}</p><p className={css.muted}>{t('transportWebSocketHint')}</p>
+    </div>}
     <label className={css.form}>{t('modelOverrideTitle')}<select value={edited} disabled={account.busy}
       onChange={(event) => { editModel(event.target.value) }}><option value="">{t('chooseModel')}</option>
       {view.models.map(model => <option key={model} value={model}>{model} · {t(Object.hasOwn(view.modelLimitOverrides, model)

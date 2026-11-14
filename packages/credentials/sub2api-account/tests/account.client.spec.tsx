@@ -24,7 +24,7 @@ function account(view: Partial<AccountView> = {}, language = zh, gate = false) {
   const actions = { signIn: vi.fn(), start: vi.fn(), verify: vi.fn(), cancel: vi.fn(),
     refresh: vi.fn(), signOut: vi.fn(), selectGroup: vi.fn(), setAccountOrigin: vi.fn(),
     showLogin: vi.fn(), showUsage: vi.fn(), loadUsage: vi.fn(),
-    setProtocol: vi.fn(), setModelLimitOverride: vi.fn(), setModelLimits: vi.fn() }
+    setProtocol: vi.fn(), setTransport: vi.fn(), setModelLimitOverride: vi.fn(), setModelLimits: vi.fn() }
   const props = { ...actions, useAccount: bindSnapshotSelector(store),
     useUsage: bindSnapshotSelector(createSnapshotStore(initialUsageState(new Date(2026, 10, 12)))),
     renderFactorySlot: vi.fn(), useFactorySlot: vi.fn(),
@@ -66,7 +66,7 @@ describe('platform account UI', () => {
 
   it('keeps account actions without the duplicate usage button or model controls', () => {
     const actions = account({ status: 'signed-in', selectedGroup: '3' as Sub2apiGroupId, models: ['gpt-5.1'],
-      modelProtocols: [{ model: 'gpt-5.1', choice: 'auto', effective: 'openai-responses' }] })
+      modelProtocols: [{ model: 'gpt-5.1', choice: 'auto', effective: 'openai-responses', transport: 'sse' }] })
     expect(screen.queryByLabelText('gpt-5.1 · ' + zh.modelProtocol)).toBeNull()
     expect(screen.queryByLabelText(zh.group)).toBeNull()
     expect(screen.queryByRole('button', { name: zh.usageTitle })).toBeNull()

@@ -5,6 +5,7 @@ import { afterEach, expect, it } from 'vitest'
 import WebSocket, { WebSocketServer } from 'ws'
 import { BlockAssembler, createUserMessage, type Message } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
+import { defineContentToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import { ResponsesTransport } from '../src/responses-transport.ts'
 import { Config } from '../src/config.ts'
 import { accountFixture } from './account-fixture.ts'
@@ -82,7 +83,7 @@ async function fixture(handle: (socket: WebSocket, body: Frame) => void = (socke
   const address = server.address()
   if (address === null || typeof address === 'string') throw new Error('Fixture did not bind')
   const baseURL = `http://127.0.0.1:${address.port}/v1`
-  const transport = new ResponsesTransport(Config({ platformOrigin: baseURL, productName: 'WS fixture', ...options }), new AbortController().signal)
+  const transport = new ResponsesTransport(Config({ platformOrigin: baseURL, productName: 'WS fixture', responsesTransport: 'auto', ...options }), new AbortController().signal)
   const ws = attach(server, handle)
   cleanups.push(() => transport.dispose())
   const call = (body: object, session = 'session-one', signal?: AbortSignal, key = 'inference-lease') =>
@@ -93,8 +94,23 @@ async function fixture(handle: (socket: WebSocket, body: Frame) => void = (socke
   return { ...ws, server, transport, posts, call }
 }
 
-it('reuses the connection and sends only new input after a matching completed response', async () => {
-  const f = await fixture()
+it('reuses the connection and sends complete history by default even after a matching completed response', async () => {
+  const f = await fixture((socket, body) => {
+    if (body.previous_response_id !== undefined) socket.close(1011, 'upstream websocket proxy failed')
+    else complete(socket, 'resp_one')
+  })
+  const first = { role: 'user', content: 'hello' }
+  await (await f.call({ input: [first] })).text()
+  const input = [first, responseItem('resp_one'), { role: 'user', content: 'continue' }]
+  expect(await (await f.call({ input })).text()).toContain('response.completed')
+  expect(f.requests).toHaveLength(1)
+  expect(f.frames[1]).toMatchObject({ input })
+  expect(f.frames[1]).not.toHaveProperty('previous_response_id')
+  expect(f.posts).toEqual([])
+})
+
+it('reuses the connection and sends only new input when incremental history is explicitly enabled', async () => {
+  const f = await fixture(undefined, { responsesIncrementalHistory: true })
   const first = { role: 'user', content: 'a'.repeat(20000) }
   const next = { role: 'user', content: 'next' }
   await (await f.call({ input: [first] })).text()
@@ -108,7 +124,7 @@ it('reuses the connection and sends only new input after a matching completed re
 })
 
 it('sends complete input after compaction, changed options, another session or a rotated key', async () => {
-  const f = await fixture()
+  const f = await fixture(undefined, { responsesIncrementalHistory: true })
   await (await f.call({ input: [{ role: 'user', content: 'old' }] })).text()
   await (await f.call({ input: [{ role: 'user', content: 'compacted' }] })).text()
   await (await f.call({ input: [{ role: 'user', content: 'compacted' }, responseItem('resp_one')], model: 'gpt-other' })).text()
@@ -122,7 +138,7 @@ it('replays full history once when the connection explicitly rejects a missing p
   const f = await fixture((socket, body) => {
     if (body.previous_response_id) socket.send(JSON.stringify({ type: 'error', status: 400, error: { code: 'previous_response_not_found' } }))
     else complete(socket, 'resp_one')
-  })
+  }, { responsesIncrementalHistory: true })
   const first = { role: 'user', content: 'hello' }
   await (await f.call({ input: [first] })).text()
   const input = [first, responseItem('resp_one'), { role: 'user', content: 'again' }]
@@ -157,11 +173,81 @@ it('does not retry an authentication rejection as HTTP', async () => {
   expect(f.posts).toEqual([])
 })
 
-it('does not replay an uncertain request when the socket closes after submission', async () => {
+it('delegates submitted-request recovery to the agent retry policy', async () => {
   const f = await fixture((socket) => { socket.terminate() })
-  await expect((await f.call({ input: [] })).text()).rejects.toThrow('无法确认是否完成')
+  await expect((await f.call({ input: [] })).text()).rejects.toMatchObject({ code: 'TRANSPORT' })
   expect(f.frames).toHaveLength(1)
   expect(f.posts).toEqual([])
+})
+
+it.each([
+  { tools: [{ type: 'mcp', server_label: 'external', server_url: 'https://example.test/mcp' }] },
+  { tools: [{ type: 'future_remote_tool' }] },
+  { background: true },
+  { previous_response_id: 'resp_external' },
+])('keeps unknown external outcomes out of normal retries: %j', async (body) => {
+  const f = await fixture((socket) => { socket.close(1011, 'upstream websocket proxy failed') })
+  await expect((await f.call({ input: [], ...body })).text()).rejects.toMatchObject({ code: 'RESPONSES_OUTCOME_UNKNOWN' })
+  expect(f.posts).toEqual([])
+})
+
+it('does not classify a WS policy rejection as a transient disconnect', async () => {
+  const f = await fixture((socket) => { socket.close(1008, 'request rejected') })
+  await expect((await f.call({ input: [] })).text()).rejects.toMatchObject({ code: 'RESPONSES_OUTCOME_UNKNOWN' })
+})
+
+it('checks a cached connection before submitting the next request and falls back if it stops responding', async () => {
+  const f = await fixture(undefined, { connectionProbeTimeoutMs: 100 })
+  const first = { role: 'user', content: 'first' }
+  await (await f.call({ input: [first] })).text()
+  f.sockets[0]!.pause()
+  const input = [first, responseItem('resp_one'), { role: 'user', content: 'next' }]
+  expect(await (await f.call({ input }, 'session-one', AbortSignal.timeout(3000))).text()).toContain('http-fixture')
+  expect(f.frames).toHaveLength(1)
+  expect(f.posts).toEqual([{ model: 'gpt-5.1', stream: true, store: false, input }])
+})
+
+it.each(['abort', 'dispose'])('does not submit or fall back when %s interrupts a cached-connection probe', async (operation) => {
+  const f = await fixture()
+  await (await f.call({ input: [] })).text()
+  const abort = new AbortController()
+  let probed = false
+  let disposed = Promise.resolve()
+  f.sockets[0]!.once('ping', () => {
+    probed = true
+    if (operation === 'abort') abort.abort()
+    else disposed = f.transport.dispose()
+  })
+  await expect(f.call({ input: [] }, 'session-one', abort.signal)).rejects.toMatchObject({ name: 'AbortError' })
+  await disposed
+  expect(probed).toBe(true)
+  expect(f.frames).toHaveLength(1)
+  expect(f.posts).toEqual([])
+})
+
+it('preserves the close status and uses HTTP for a later request after an uncertain WS interruption', async () => {
+  const f = await fixture((socket) => { socket.close(1011, 'upstream websocket proxy failed') })
+  await expect((await f.call({ input: [] })).text()).rejects.toThrow('1011: upstream websocket proxy failed')
+  expect(f.posts).toEqual([])
+  const input = [{ role: 'user', content: 'continue after checking the failed request' }]
+  expect(await (await f.call({ input })).text()).toContain('http-fixture')
+  expect(f.requests).toHaveLength(1)
+  expect(f.frames).toHaveLength(1)
+  expect(f.posts).toEqual([{ model: 'gpt-5.1', stream: true, store: false, input }])
+})
+
+it('recovers an explicitly rejected connection limit using full HTTP history', async () => {
+  let calls = 0
+  const f = await fixture((socket) => {
+    if (++calls === 1) complete(socket, 'resp_one')
+    else socket.send(JSON.stringify({ type: 'error', status: 400, error: { code: 'websocket_connection_limit_reached' } }))
+  }, { responsesIncrementalHistory: true })
+  const first = { role: 'user', content: 'first' }
+  await (await f.call({ input: [first] })).text()
+  const input = [first, responseItem('resp_one'), { role: 'user', content: 'next' }]
+  expect(await (await f.call({ input })).text()).toContain('http-fixture')
+  expect(f.frames[1]).toMatchObject({ previous_response_id: 'resp_one' })
+  expect(f.posts).toEqual([{ model: 'gpt-5.1', stream: true, store: false, input }])
 })
 
 it('cancels an active stream and closes all connections on disposal', async () => {
@@ -214,17 +300,17 @@ it('uses full HTTP input when the gateway explicitly confirms it has not forward
   expect(f.requests[0]?.headers['x-wss-transport-fallback']).toBe('sse')
 })
 
-it('does not accept a fallback permission after the server starts a response', async () => {
+it.each(['websocket_unavailable', 'websocket_connection_limit_reached'])('does not accept %s after the server starts a response', async (code) => {
   const f = await fixture((socket) => {
     socket.send(JSON.stringify({ type: 'response.created' }))
-    socket.send(JSON.stringify({ type: 'error', error: { code: 'websocket_unavailable', http_fallback: true } }))
+    socket.send(JSON.stringify({ type: 'error', error: { code, http_fallback: true } }))
   })
-  expect(await (await f.call({ input: [] })).text()).toContain('websocket_unavailable')
+  expect(await (await f.call({ input: [] })).text()).toContain(code)
   expect(f.posts).toEqual([])
 })
 
 it('uses leased credentials, decodes Responses through the SDK and preserves continuation through real account composition', async () => {
-  const f = await accountFixture({ protocol: 'auto', models: ['gpt-5.1'] })
+  const f = await accountFixture({ protocol: 'auto', models: ['gpt-5.1'], responsesTransport: 'auto', responsesIncrementalHistory: true })
   const ws = attach(f.server, (socket) => { complete(socket, 'resp_one') })
   await f.account.signInWithPassword('user@example.com', 'fake-password')
   const run = async (messages: readonly Message[]) => {
@@ -248,16 +334,76 @@ it('uses leased credentials, decodes Responses through the SDK and preserves con
   await f.account.signOut()
 })
 
-it('reports a submitted WS interruption as a non-retryable SDK outcome', async () => {
-  const f = await accountFixture({ protocol: 'auto', models: ['gpt-5.1'] })
+it('preserves a retryable WS interruption through the SDK without retrying inside a direct stream', async () => {
+  const f = await accountFixture({ protocol: 'auto', models: ['gpt-5.1'], responsesTransport: 'auto' })
   const ws = attach(f.server, (socket) => { socket.terminate() })
   await f.account.signInWithPassword('user@example.com', 'fake-password')
   const assembler = new BlockAssembler()
   for await (const chunk of f.context.llm.stream({ provider: 'sub2api-u7-g3', model: 'gpt-5.1', messages: [] })) assembler.push(chunk)
-  expect(assembler.finish).toMatchObject({ kind: 'error', failure: { code: 'PI_AI_ERROR' } })
-  expect(JSON.stringify(assembler.finish)).toContain('无法确认是否完成')
+  expect(assembler.finish).toMatchObject({ kind: 'error', failure: { code: 'TRANSPORT' } })
+  expect(JSON.stringify(assembler.finish)).toContain('计费状态未知')
   expect(ws.frames).toHaveLength(1)
   expect(f.requests.filter(request => request.path === '/v1/responses')).toEqual([])
+})
+
+it.each(['recover', 'cancel'] as const)('handles a partial WS tool response after a completed tool: %s', async (outcome) => {
+  const f = await accountFixture({ protocol: 'auto', models: ['gpt-5.1'], responsesTransport: 'auto', agentLoop: true })
+  f.setReply('WS recovery complete')
+  let effects = 0
+  f.context.tools.register(defineContentToolFixture({ name: 'record_effect', description: 'Record one effect', parameters: {},
+    execute: () => { effects++; return Promise.resolve([{ type: 'text', text: 'effect recorded' }]) } }))
+  let interrupted: WebSocket | undefined
+  const ws = attach(f.server, (socket) => {
+    const item = { type: 'function_call', id: effects === 0 ? 'fc_first' : 'fc_partial',
+      call_id: effects === 0 ? 'call_first' : 'call_partial', name: 'record_effect', arguments: '', status: 'in_progress' }
+    socket.send(JSON.stringify({ type: 'response.created', response: { id: 'resp_tool', status: 'in_progress', output: [] } }))
+    socket.send(JSON.stringify({ type: 'response.output_item.added', output_index: 0, item }))
+    if (effects === 0) {
+      const completed = { ...item, arguments: '{}', status: 'completed' }
+      socket.send(JSON.stringify({ type: 'response.function_call_arguments.delta', output_index: 0, item_id: item.id, delta: '{}' }))
+      socket.send(JSON.stringify({ type: 'response.output_item.done', output_index: 0, item: completed }))
+      socket.send(JSON.stringify({ type: 'response.completed', response: { id: 'resp_tool', status: 'completed', output: [completed],
+        usage: { input_tokens: 9, output_tokens: 2, total_tokens: 11 } } }))
+    } else {
+      interrupted = socket
+      socket.send(JSON.stringify({ type: 'response.function_call_arguments.delta', output_index: 0, item_id: item.id, delta: '{' }))
+    }
+  })
+  f.context.on('llm/stream', async function* (_request, next) {
+    for await (const chunk of next()) {
+      yield chunk
+      if (chunk.type === 'tool-call-delta' && chunk.argumentsDelta === '{') interrupted?.close(1011, 'upstream websocket proxy failed')
+    }
+  })
+  await f.account.signInWithPassword('user@example.com', 'fake-password')
+  const agent = await f.context.agentLoop.create(SessionId(`ws-retry-${outcome}`), { provider: 'sub2api-u7-g3', model: 'gpt-5.1' })
+  f.context.on('session/event', (session, event) => {
+    if (outcome === 'cancel' && session === agent.session && event.type === 'llm/retry') agent.cancel({ kind: 'user' })
+  })
+  const idle = agent.whenIdle()
+  agent.followup(createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Record one effect, then reply.' }] }))
+  await idle
+  const events = agent.session.snapshotEvents()
+  const retries = events.filter(event => event.type === 'llm/retry')
+  expect(retries.map(event => ({ retry: event.data.retry, code: event.data.failure.code })))
+    .toEqual([{ retry: 1, code: 'TRANSPORT' }])
+  expect(retries[0]?.data).toMatchObject({ maxRetries: 5 })
+  expect(retries[0]?.data.failure.message).toContain('1011: upstream websocket proxy failed')
+  expect(effects).toBe(1)
+  expect(ws.frames).toHaveLength(2)
+  expect(events.filter(event => event.type === 'tool/result')).toHaveLength(1)
+  expect(events.filter(event => event.type === 'assistant/attempt')).toHaveLength(1)
+  const http = f.requests.filter(request => request.path === '/v1/responses')
+  if (outcome === 'recover') {
+    expect(http).toHaveLength(1)
+    expect(http[0]?.body.input).toEqual(ws.frames[1]?.input)
+    expect(http[0]?.body).not.toHaveProperty('previous_response_id')
+    expect(JSON.stringify(agent.session.deriveMessages().at(-1))).toContain('WS recovery complete')
+    expect(events.at(-1)).toMatchObject({ type: 'turn/end', data: { reason: { kind: 'completed' } } })
+  } else {
+    expect(http).toEqual([])
+    expect(events.filter(event => event.type === 'llm/retry-started')).toEqual([])
+  }
 })
 
 it('falls back when a gateway never completes its WS handshake', async () => {
@@ -283,7 +429,7 @@ it('continues with tool results after the SDK omits output status and normalizes
   const item = { type: 'function_call', id: 'fc_one', call_id: 'call_one', name: 'read_file', status: 'completed', arguments: '{ "path": "a.txt" }' }
   const f = await fixture((socket) => {
     socket.send(JSON.stringify({ type: 'response.completed', response: { id: 'resp_tool', output: [item] } }))
-  })
+  }, { responsesIncrementalHistory: true })
   const input = { role: 'user', content: 'read a file' }
   await (await f.call({ input: [input] })).text()
   const { status: _status, ...replay } = item

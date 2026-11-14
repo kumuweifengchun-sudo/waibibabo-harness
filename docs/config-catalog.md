@@ -3641,10 +3641,12 @@ export interface Config {
   platformOrigin: string
   /** Additional trusted account API origins serving the same OAuth resource. */
   accountOrigins?: string[]
-  /** Deadline for account metadata and inference model-list connection probes, in milliseconds. */
+  /** Deadline for account metadata, model-list probes, and Responses socket handshakes and health checks, in milliseconds. */
   connectionProbeTimeoutMs?: number
-  /** Responses transport: prefer WebSocket with pre-submission HTTP fallback, or always use HTTP streaming. */
+  /** Default Responses transport before per-model overrides: HTTP streaming, or auto to prefer WebSocket with HTTP fallback. */
   responsesTransport?: 'auto' | 'sse'
+  /** Enable automatic previous_response_id chaining only for gateways with verified incremental Responses support. */
+  responsesIncrementalHistory?: boolean
   /** Idle lifetime of reusable Responses WebSocket connections, in milliseconds. */
   responsesSocketIdleMs?: number
   /** Maximum retained Responses connections; concurrent overflow requests use temporary connections. */
@@ -4462,7 +4464,7 @@ export interface Config {
 
 - `inject`: `tools` · `subagents` · `systemPrompt` · `sessionProjections`
 - `refs`: [`AgentOptions`](subsystems/core.md)
-- `source`: [`packages/subagent/tool-subagent/src/index.ts:45`](../packages/subagent/tool-subagent/src/index.ts)
+- `source`: [`packages/subagent/tool-subagent/src/index.ts:46`](../packages/subagent/tool-subagent/src/index.ts)
 
 ```ts config-catalog
 /** Config: which registered provider this tool delegates to, plus child defaults. */
@@ -5079,7 +5081,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | `@deepseek-ai/dsh-tool-working-directory` | `tools` · `workingDirectory` | [`packages/session/tool-working-directory/src/index.ts`](../packages/session/tool-working-directory/src/index.ts) |
 | `@deepseek-ai/dsh-tools` | `systemPrompt` | [`packages/core/tools/src/index.ts`](../packages/core/tools/src/index.ts) |
 | `@deepseek-ai/dsh-user-questions` | — | [`packages/interaction/user-questions/src/index.ts`](../packages/interaction/user-questions/src/index.ts) |
-| `@deepseek-ai/dsh-waibibabo` | — | [`packages/bundle/waibibabo/src/index.ts`](../packages/bundle/waibibabo/src/index.ts) |
+| `@deepseek-ai/dsh-waibibabo` | `systemPrompt` | [`packages/bundle/waibibabo/src/index.ts`](../packages/bundle/waibibabo/src/index.ts) |
 | `@deepseek-ai/dsh-webhook` | `agents` · `agentDefaultModel` · `agentPresets` · `permissionPresets` · `sessionTitle` · `workspaceRegistry` | [`packages/experimental/webhook/src/index.ts`](../packages/experimental/webhook/src/index.ts) |
 | `@deepseek-ai/dsh-workspace` | `storageDomain` · `sessionPersistence` | [`packages/workspace/workspace/src/index.ts`](../packages/workspace/workspace/src/index.ts) |
 <!-- END GENERATED config-catalog:no-config -->

@@ -31,7 +31,7 @@ description: "歪比巴卜桌面端使用独立的账号提供方、产品数据
 
 ## 迁移
 
-平台 Responses 模型默认优先使用 WS，握手不支持时回退 HTTP/SSE；需要固定原传输方式时，在账号插件配置中设置 `responsesTransport: sse`。平台反向代理需转发 WS Upgrade；配套后端增加首次选号未执行时的明确回退标记，无需数据库迁移。旧后端在接受连接后直接断开且未明确拒绝时，客户端会报告结果未知，不会盲目重发。
+平台 Responses 模型默认使用 HTTP/SSE 流式传输。在“模型”设置中，每个 Responses 模型可单独选择“流式（默认）”或“WS”，按账号、分组和模型保存；已有登录记录缺少可选 `modelTransportOverrides` 时使用部署默认值。`responsesTransport` 默认值为 `sse`；显式配置 `auto` 的部署仍优先使用 WS，逐模型选择优先于部署默认值。选择 WS 后，平台反向代理需转发 WS Upgrade；握手不支持时安全回退 HTTP/SSE。配套后端支持明确回退标记，无需数据库迁移；提交后的连接中断及重试行为见[账号包说明](../../../../packages/credentials/sub2api-account/README.md#use-this-package)。
 
 1. 部署配套的 Sub2API 服务端并应用桌面 OAuth 数据库迁移，将服务端前端地址设为公开 HTTPS 源。按[账号包部署说明](../../../../packages/credentials/sub2api-account/README.md#use-this-package)配置。
 2. 启动桌面应用，使用平台邮箱密码或浏览器授权登录。选择一个可用模型分组，确认对话选择器显示对应模型。

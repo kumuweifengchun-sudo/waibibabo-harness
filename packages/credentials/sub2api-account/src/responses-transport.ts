@@ -1,13 +1,21 @@
-/** Account-owned Responses sockets with conservative HTTP fallback and verified incremental history. */
-import { createHash } from 'node:crypto'
+/** Account-owned Responses sockets with HTTP recovery and structured model-request failures. */
+import { createHash, randomUUID } from 'node:crypto'
 import type { ClientRequest, IncomingMessage } from 'node:http'
 import WebSocket from 'ws'
 import { z } from 'zod'
+import { LlmError } from '@deepseek-ai/dsh-llm'
 import type { Config } from './config.ts'
+import type { ModelTransport } from './types.ts'
 
-type Options = Required<Pick<Config, 'responsesTransport' | 'connectionProbeTimeoutMs' | 'responsesSocketIdleMs'
+type Options = Required<Pick<Config, 'responsesTransport' | 'responsesIncrementalHistory' | 'connectionProbeTimeoutMs' | 'responsesSocketIdleMs'
   | 'responsesSocketLimit' | 'responsesFallbackCooldownMs'>>
 const requestBody = z.looseObject({ input: z.array(z.unknown()), stream: z.literal(true) })
+// Local tool calls execute only after the agent accepts a complete model response.
+const replayableRequest = z.object({
+  tools: z.array(z.looseObject({ type: z.enum(['function', 'custom']) })).optional(),
+  background: z.literal(false).optional(),
+  previous_response_id: z.null().optional(),
+})
 const eventBody = z.looseObject({ type: z.string(),
   error: z.looseObject({ code: z.string().optional(), http_fallback: z.boolean().optional() }).optional(),
   response: z.looseObject({ id: z.string().optional(), output: z.array(z.unknown()).optional() }).optional() })
@@ -98,16 +106,20 @@ export class ResponsesTransport {
   /** Bind an SDK fetch to its selected route and Session.
    * @param baseURL - Prepared model endpoint; no account origin fallback is used.
    * @param session - Session identity; omitted requests never retain a socket.
+   * @param reportFailure - Optional per-attempt observer preserving typed failures across SDK error flattening; must not throw.
+   *   Omission leaves failures on the response stream.
+   * @param transport - Model preference captured for this request; omission uses the deployment default.
    * @returns transport accepting the SDK's ordinary Responses payload and returning its existing SSE event format.
    */
-  fetchFor(baseURL: string, session: string | undefined): typeof globalThis.fetch {
+  fetchFor(baseURL: string, session: string | undefined, reportFailure?: (failure: LlmError) => void,
+    transport: ModelTransport = this.options.responsesTransport === 'sse' ? 'sse' : 'websocket'): typeof globalThis.fetch {
     return async (input, init) => {
       const request = new Request(input, init)
       const signal = AbortSignal.any([request.signal, this.lifetime])
       this.assertActive(signal)
       const url = new URL(request.url)
       const target = new URL(baseURL.replace(/\/$/u, '') + '/responses')
-      if (this.options.responsesTransport === 'sse' || url.href !== target.href || request.method !== 'POST') return fetch(request, { signal })
+      if (transport === 'sse' || url.href !== target.href || request.method !== 'POST') return fetch(request, { signal })
       const body = requestBody.parse(JSON.parse(await request.clone().text()))
       const headers = new Headers(request.headers)
       for (const name of ['content-length', 'content-type', 'connection', 'upgrade', 'accept-encoding']) headers.delete(name)
@@ -117,12 +129,15 @@ export class ResponsesTransport {
       const cooldown = this.cooldowns.get(route)
       if (cooldown !== undefined && cooldown > Date.now()) return fetch(request, { signal })
       this.cooldowns.delete(route)
-      const fallback = () => {
+      const unavailable = () => {
         if (this.cooldowns.size >= this.options.responsesSocketLimit) {
           const oldest = this.cooldowns.keys().next().value
           if (oldest !== undefined) this.cooldowns.delete(oldest)
         }
         this.cooldowns.set(route, Date.now() + this.options.responsesFallbackCooldownMs)
+      }
+      const fallback = () => {
+        unavailable()
         return fetch(request, { signal })
       }
       const key = session === undefined ? undefined : digest([session, route])
@@ -135,7 +150,7 @@ export class ResponsesTransport {
         }
         return fallback()
       }
-      return this.response(connection, body, signal, fallback)
+      return this.response(connection, body, signal, fallback, unavailable, reportFailure)
     }
   }
 
@@ -164,6 +179,10 @@ export class ResponsesTransport {
     if (cached !== undefined && !cached.busy && cached.socket.readyState === WebSocket.OPEN) {
       cached.busy = true
       clearTimeout(cached.idle)
+      try {
+        await this.probe(cached.socket, signal)
+        this.assertActive(signal)
+      } catch (error) { this.release(cached, false); throw error }
       return cached
     }
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -212,6 +231,31 @@ export class ResponsesTransport {
     return connection
   }
 
+  /** Verify that a retained connection responds before submitting another model request. */
+  private probe(socket: WebSocket, signal: AbortSignal): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      const payload = Buffer.from(randomUUID())
+      const cleanup = () => {
+        clearTimeout(timer)
+        socket.off('pong', pong); socket.off('close', failed); socket.off('error', failed)
+        signal.removeEventListener('abort', aborted)
+      }
+      const failed = () => { cleanup(); reject(new HandshakeFailure()) }
+      const aborted = () => { cleanup(); reject(new DOMException('Request aborted', 'AbortError')) }
+      const pong = (received: Buffer) => { if (received.equals(payload)) { cleanup(); resolve() } }
+      const timer = setTimeout(failed, this.options.connectionProbeTimeoutMs)
+      timer.unref()
+      socket.on('pong', pong); socket.once('close', failed); socket.once('error', failed)
+      signal.addEventListener('abort', aborted, { once: true })
+      if (signal.aborted) aborted()
+      else if (socket.readyState !== WebSocket.OPEN) failed()
+      else {
+        socket.resume()
+        try { socket.ping(payload, true, (error?: Error) => { if (error) failed() }) } catch { failed() }
+      }
+    })
+  }
+
   private release(connection: Connection, success: boolean): void {
     connection.busy = false
     if (!success || connection.retired || connection.key === undefined || this.disposed
@@ -220,11 +264,12 @@ export class ResponsesTransport {
     connection.idle.unref()
   }
 
-  private async response(connection: Connection, body: Body, signal: AbortSignal, fallback: () => Promise<Response>): Promise<Response> {
+  private async response(connection: Connection, body: Body, signal: AbortSignal,
+    fallback: () => Promise<Response>, unavailable: () => void, reportFailure?: (failure: LlmError) => void): Promise<Response> {
     const socket = connection.socket
     const ready = Promise.withResolvers<'ws' | 'http'>()
     let cancel = () => { this.release(connection, false) }
-    const initial = frame(body, connection.continuation)
+    const initial = frame(body, this.options.responsesIncrementalHistory ? connection.continuation : undefined)
     const stream = new ReadableStream<Uint8Array>({
       start: (controller) => {
         let settled = false
@@ -233,19 +278,33 @@ export class ResponsesTransport {
         const finish = (error?: Error, outcome: 'complete' | 'error' | 'cancelled' | 'fallback' = 'error') => {
           if (settled) return
           settled = true
-          socket.off('message', message); socket.off('close', lost); socket.off('error', lost)
+          socket.off('message', message); socket.off('close', closed); socket.off('error', lost)
           signal.removeEventListener('abort', aborted)
           if (outcome !== 'cancelled') { if (error) controller.error(error); else controller.close() }
           this.release(connection, outcome === 'complete')
           ready.resolve(outcome === 'fallback' ? 'http' : 'ws')
         }
-        const lost = () => { finish(new Error('WS 请求已提交，但无法确认是否完成；请查看平台使用日志后重试')) }
         const aborted = () => { finish(new DOMException('Request aborted', 'AbortError')) }
+        const interrupted = (detail: string, transient = true) => {
+          if (settled) return
+          if (signal.aborted || this.disposed) { aborted(); return }
+          unavailable()
+          const failure = transient && replayableRequest.safeParse(body).success
+            ? new LlmError(`WS 连接中断（${detail}）；可重试当前模型请求，上游生成和计费状态未知`, 'TRANSPORT')
+            : new LlmError(`WS 请求已提交，但无法确认是否完成（${detail}）；请查看平台使用日志后重试`, 'RESPONSES_OUTCOME_UNKNOWN')
+          reportFailure?.(failure)
+          finish(failure)
+        }
+        const closed = (code: number, reason: Buffer) => {
+          const detail = reason.toString('utf8').replace(/[\r\n\t]/gu, ' ').trim()
+          interrupted(detail ? `${code}: ${detail}` : String(code), [1000, 1001, 1005, 1006, 1011, 1012, 1013].includes(code))
+        }
+        const lost = (error: unknown) => { interrupted(error instanceof Error ? error.message : '连接中断') }
         const send = (text: string) => {
-          try { socket.send(text, (error) => { if (error) lost() }) } catch (error) {
+          if (socket.readyState !== WebSocket.OPEN) { finish(undefined, 'fallback'); return }
+          try { socket.send(text, (error) => { if (error) lost(error) }) } catch (error) {
             // A synchronous send failure cannot establish whether any request bytes reached the gateway.
-            if (error instanceof Error) lost()
-            else finish(new Error('WS 请求发送状态未知，请查看平台使用日志后重试'))
+            lost(error)
           }
         }
         const message = (data: WebSocket.RawData, binary: boolean) => {
@@ -265,6 +324,10 @@ export class ResponsesTransport {
               finish(undefined, 'fallback')
               return
             }
+            if (!observed && event.type === 'error' && event.error?.code === 'websocket_connection_limit_reached') {
+              finish(undefined, 'fallback')
+              return
+            }
             if (event.type === 'error' && event.error?.code === 'previous_response_not_found'
               && initial.incremental && !observed && !recovered) {
               recovered = true
@@ -277,7 +340,7 @@ export class ResponsesTransport {
             controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`))
             if (event.type === 'response.completed') {
               const result = event.response
-              if (result?.id !== undefined && result.output !== undefined) {
+              if (this.options.responsesIncrementalHistory && result?.id !== undefined && result.output !== undefined) {
                 connection.continuation = { id: result.id, parameters: parameters(body),
                   inputs: [...body.input, ...result.output].map(inputDigest) }
               } else delete connection.continuation
@@ -287,7 +350,7 @@ export class ResponsesTransport {
           } catch { finish(new Error('WS 响应无法处理，请检查平台使用日志后重试')) }
         }
         cancel = () => { finish(undefined, 'cancelled') }
-        socket.on('message', message); socket.on('close', lost); socket.on('error', lost)
+        socket.on('message', message); socket.on('close', closed); socket.on('error', lost)
         signal.addEventListener('abort', aborted, { once: true })
         if (signal.aborted) aborted()
         else send(initial.text)

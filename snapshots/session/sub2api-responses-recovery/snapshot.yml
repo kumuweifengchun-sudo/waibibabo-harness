@@ -1,0 +1,10 @@
+version: 1
+scenario: sub2api-responses-recovery
+profile: headless
+composition: sub2api-responses-recovery
+recording: authored
+header:
+  class: sub2api-responses-recovery
+  pin: true
+  systemPromptSource: text-turn
+  toolSchemasSource: text-turn

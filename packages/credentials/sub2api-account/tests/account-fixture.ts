@@ -8,6 +8,9 @@ import { afterEach, expect } from 'vitest'
 import { WebSocketServer } from 'ws'
 import { boot } from '@deepseek-ai/dsh-app-boot'
 import LlmRuntime from '@deepseek-ai/dsh-llm'
+import AgentLoop from '@deepseek-ai/dsh-agent-loop'
+import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
+import * as LlmRetry from '@deepseek-ai/dsh-llm-retry'
 import WebServer from '@deepseek-ai/dsh-host-webserver'
 import { LocalCredentialProvider } from '@deepseek-ai/dsh-credentials-local'
 import Account from '../src/index.ts'
@@ -22,7 +25,9 @@ export async function accountFixture(options: {
   accountOrigins?: string[]
   protocol?: ModelProtocolChoice
   responsesTransport?: 'auto' | 'sse'
+  responsesIncrementalHistory?: boolean
   webSocket?: boolean
+  agentLoop?: boolean
   models?: string[]
   groups?: Array<{ id: number; name: string; platform: string }>
   platform?: string
@@ -223,15 +228,24 @@ export async function accountFixture(options: {
   await writeFile(configPath, JSON.stringify([
     { id: 'credentials', name: 'cordis:test-credentials', config: { path: join(home, 'credentials.yaml'), watch: false } },
     { id: 'web', name: 'cordis:test-web', config: { host: '127.0.0.1', port: 0 } },
-    { id: 'llm', name: 'cordis:test-llm' },
+    { id: 'llm', name: options.agentLoop ? 'cordis:test-agent-dependencies' : 'cordis:test-llm' },
     { id: 'account', name: 'cordis:test-account', config: { platformOrigin: options.issuerOrigin ?? origin,
       accountOrigins: options.accountOrigins ?? (options.issuerOrigin === undefined ? [] : [origin]), productName: 'Waibibabo',
-      allowLoopbackHttp: true, protocol: options.protocol ?? 'openai-completions', responsesTransport: options.responsesTransport ?? 'auto' } },
+      allowLoopbackHttp: true, protocol: options.protocol ?? 'openai-completions',
+      ...options.responsesTransport === undefined ? {} : { responsesTransport: options.responsesTransport },
+      ...options.responsesIncrementalHistory === undefined ? {} : { responsesIncrementalHistory: options.responsesIncrementalHistory } } },
+    ...options.agentLoop ? [
+      { id: 'retry', name: 'cordis:test-retry' },
+      { id: 'loop', name: 'cordis:test-agent-loop', config: { agents: [] } },
+    ] : [],
   ]) + '\n')
   const context = await boot('sub2api-account-test', configPath, [], (host) => {
     host.loader.builtins['test-credentials'] = LocalCredentialProvider
     host.loader.builtins['test-web'] = WebServer
     host.loader.builtins['test-llm'] = LlmRuntime
+    host.loader.builtins['test-agent-dependencies'] = { name: 'test-agent-dependencies', apply: mountAgentLoopTestDependencies }
+    host.loader.builtins['test-retry'] = LlmRetry
+    host.loader.builtins['test-agent-loop'] = AgentLoop
     host.loader.builtins['test-account'] = Account
   })
   cleanups.push(async () => { releaseExchange.resolve(undefined); await context.fiber.dispose() })

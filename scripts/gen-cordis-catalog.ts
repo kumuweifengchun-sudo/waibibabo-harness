@@ -878,6 +878,7 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   CredentialKey: 'credentials.md',
   Sub2apiGroupId: 'credentials.md',
   ModelProtocolChoice: 'credentials.md',
+  ModelTransport: 'credentials.md',
   ModelLimits: 'credentials.md',
   UsageQuery: 'credentials.md',
   UsageResult: 'credentials.md',

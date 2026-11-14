@@ -97,6 +97,7 @@ export function apply(ctx: Context): void {
         showLogin: (visible) => { publish({ loginVisible: visible }) },
         showUsage: (visible) => { publish({ usageVisible: visible }) },
         setProtocol: async (group, model, protocol) => { await run(() => account.setModelProtocol(group, model, protocol)) },
+        setTransport: async (group, model, transport) => { await run(() => account.setModelTransport(group, model, transport)) },
         setModelLimits: async (limits) => { await run(() => account.setModelLimits(limits)) },
         setModelLimitOverride: async (group, model, limits) => { await run(() => account.setModelLimitOverride(group, model, limits)) },
         loadUsage: async (query) => {

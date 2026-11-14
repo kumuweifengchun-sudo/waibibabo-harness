@@ -25,7 +25,7 @@ import { invoiceAmount, invoiceDownload, invoiceForm, invoicePage, invoiceQuote,
 import type { CheckoutView, GatewayEndpoint, GatewayId, GatewayView, ImageRequest, ImageResult, InvoiceFileId, InvoiceId, InvoicePage,
   InvoiceQuote, InvoiceRequest, InvoiceView, OrderPage, OrderRequest, PaymentLaunch, PaymentOrder, PaymentOrderId, PlatformFile,
   PlatformPageQuery, PlatformResult, SubscriptionView } from './platform-types.ts'
-import type { AccountConnectionView, AccountFailure, AccountView, ModelLimits, ModelProtocolChoice, Sub2apiGroupId, Sub2apiUserId, UsageQuery, UsageResult } from './types.ts'
+import type { AccountConnectionView, AccountFailure, AccountView, ModelLimits, ModelProtocolChoice, ModelTransport, Sub2apiGroupId, Sub2apiUserId, UsageQuery, UsageResult } from './types.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context { sub2apiAccount: Sub2apiAccount }
@@ -35,10 +35,12 @@ const RECORD = credentialKey('sub2api-account', 'desktop')
 const CONNECTION_RECORD = credentialKey('sub2api-account', 'connection')
 const storedConnection = z.object({ issuer: z.string(), origin: z.string().nullable() })
 const protocolSchema = z.enum(['openai-completions', 'openai-responses', 'anthropic-messages', 'google-generative-ai'])
+const transportSchema = z.enum(['sse', 'websocket'])
 const storedSession = z.object({
   issuer: z.string(), clientId: z.string().min(1), accessToken: z.string().min(1), refreshToken: z.string().min(1),
   expiresAt: z.number(), groupId: z.string().regex(/^[1-9]\d*$/).nullable(),
   protocolOverrides: z.record(z.string(), z.record(z.string(), protocolSchema)).optional(),
+  modelTransportOverrides: z.record(z.string(), z.record(z.string(), transportSchema)).optional(),
   modelLimits: modelLimitsSchema.optional(),
   modelLimitOverrides: z.record(z.string(), z.record(z.string(), modelLimitsSchema)).optional(),
   gatewayOrigin: z.string().optional(), gatewayInsecureAllowed: z.boolean().optional(),
@@ -121,7 +123,8 @@ export class Sub2apiAccount extends TypertRemoteService {
     this.responses = new ResponsesTransport(this.options, this.lifetime.signal)
     this.adapter = new PiAiAdapter({
       profiles: () => this.profiles,
-      responsesFetch: request => this.responses.fetchFor(request.baseURL, request.sessionId),
+      responsesFetch: (request, reportFailure) => this.responses.fetchFor(request.baseURL, request.sessionId, reportFailure,
+        this.modelTransport(request.model)),
       resolveApiKey: async (provider) => {
         if (this.lifetime.signal.aborted || this.session === undefined || provider !== this.provider()) {
           throw new LlmError('请登录平台账号并选择模型分组', 'MISSING_CREDENTIAL')
@@ -419,8 +422,15 @@ export class Sub2apiAccount extends TypertRemoteService {
     }
     if (revision === this.revision && selectionRevision === this.selectionRevision && provider === this.provider()) {
       this.publish({ models: result.data.map(model => model.id),
-        modelProtocols: protocols.map(({ source, choice, effective }) => ({ model: source.id, choice, effective })) })
+        modelProtocols: protocols.map(({ source, choice, effective }) => ({ model: source.id, choice, effective,
+          transport: effective === 'openai-responses' ? this.modelTransport(source.id) : null })) })
     }
+  }
+
+  private modelTransport(model: string): ModelTransport {
+    const overrides = this.session?.modelTransportOverrides?.[this.view.selectedGroup ?? '']
+    const selected = overrides !== undefined && Object.hasOwn(overrides, model) ? overrides[model] : undefined
+    return selected ?? (this.options.responsesTransport === 'sse' ? 'sse' : 'websocket')
   }
 
   private async refreshBalance(): Promise<void> {
@@ -521,6 +531,27 @@ export class Sub2apiAccount extends TypertRemoteService {
           ? Object.fromEntries(Object.entries(previousChoices).filter(([id]) => id !== model)) : { ...previousChoices, [model]: choice }
         return { ...latest, protocolOverrides: { ...latest.protocolOverrides, [groupId]: group } }
       })
+    })
+  }
+
+  /** Save the Responses transport for a model in the selected group.
+   * @param groupId - Group shown when the client rendered the control.
+   * @param model - Exact id of a current-group model using Responses.
+   * @param transport - HTTP streaming or WebSocket with safe HTTP fallback.
+   * @returns state after persistence; subsequent requests use the selection and active requests may finish.
+   */
+  @Remote
+  setModelTransport(groupId: Sub2apiGroupId, model: string, transport: ModelTransport): Promise<AccountView> {
+    return this.report(async () => {
+      if (this.session === undefined) throw new AccountError('authorization')
+      if (groupId !== this.view.selectedGroup || !this.catalog.some(value => value.id === model)) throw new AccountError('busy')
+      if (!this.view.modelProtocols.some(value => value.model === model && value.effective === 'openai-responses')) {
+        throw new AccountError('validation')
+      }
+      const choice = parse(transportSchema, transport)
+      await this.updateModelSettings(latest => ({ ...latest, modelTransportOverrides: {
+        ...latest.modelTransportOverrides, [groupId]: { ...latest.modelTransportOverrides?.[groupId], [model]: choice },
+      } }))
     })
   }
 

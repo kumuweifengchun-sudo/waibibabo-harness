@@ -119,9 +119,11 @@ export interface PiAiAdapterOptions {
   prepareHeaders?: (request: PiAiRequestHeaderContext, headers: Headers) => Headers
   /** Supply an instance-owned transport for OpenAI Responses only; other protocols keep their SDK transport.
    * @param request - Routing and session identity of this prepared call.
+   * @param reportFailure - Preserve this attempt's typed transport failure when the SDK flattens it; report only terminal failures.
+   *   Caller cancellation and idle timeouts take precedence.
    * @returns a Fetch-compatible transport; its owner must cancel and release it on disposal.
    */
-  responsesFetch?: (request: PiAiRequestHeaderContext) => typeof globalThis.fetch
+  responsesFetch?: (request: PiAiRequestHeaderContext, reportFailure: (failure: LlmError) => void) => typeof globalThis.fetch
   /** Resolve the optional durable attachment service at request time. */
   resolveAttachments?: () => AttachmentStore | undefined
   /** Bridge one attachment reference into the current model-tool execution world. */
@@ -464,11 +466,11 @@ export class PiAiAdapter extends LlmAdapter {
             maxBytes: profile.requestImageMaxBytes,
           },
         }, onReplayDegrade, updates.systemPromptUpdate === 'in-history')
+      let transportFailure: LlmError | undefined
+      const fetch = responsesFetch?.(requestMetadata(options, model.baseUrl), (failure) => { transportFailure = failure })
       const events = snapshot.models.streamSimple(model, context, {
         ...profileOptions(profile, reasoning, apiKey),
-        ...responsesFetch === undefined ? {} : {
-          fetch: responsesFetch(requestMetadata(options, model.baseUrl)),
-        },
+        ...fetch === undefined ? {} : { fetch },
         ...options.temperature === undefined ? {} : { temperature: options.temperature },
         ...options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens },
         ...options.sessionId === undefined ? {} : { sessionId: String(options.sessionId) },
@@ -483,6 +485,9 @@ export class PiAiAdapter extends LlmAdapter {
           if (result.done) {
             exhausted = true
             return
+          }
+          if (result.value.type === 'finish' && result.value.reason.kind === 'error' && transportFailure !== undefined) {
+            throw transportFailure
           }
           yield result.value
         }

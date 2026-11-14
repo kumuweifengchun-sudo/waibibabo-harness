@@ -15,6 +15,8 @@ export type AccountFailure = 'network' | 'timeout' | 'server' | 'authorization' 
 export type ModelProtocol = 'openai-completions' | 'openai-responses' | 'anthropic-messages' | 'google-generative-ai'
 /** A user override or automatic model-specific selection. */
 export type ModelProtocolChoice = 'auto' | ModelProtocol
+/** Responses delivery preference; WebSocket retains safe HTTP fallback. */
+export type ModelTransport = 'sse' | 'websocket'
 /** Shared defaults for all models and groups of the signed-in platform account. */
 export interface ModelLimits {
   readonly contextWindow: number
@@ -26,6 +28,8 @@ export interface ModelProtocolView {
   readonly model: string
   readonly choice: ModelProtocolChoice
   readonly effective: ModelProtocol
+  /** Selected Responses transport; null for protocols without WebSocket support. */
+  readonly transport: ModelTransport | null
 }
 /** Account details exposed without login or inference credentials. */
 export interface AccountProfile {

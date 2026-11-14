@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, screen, within } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { expect, it, vi } from 'vitest'
 import { ok } from '@deepseek-ai/dsh-remote-mock'
 import { installAssembledBootEnv, mountAssembledApp } from './assembled-boot.ts'
@@ -31,8 +31,12 @@ it('mounts the native platform pages through the shipped client registrations', 
     groups: [{ id: '3', name: '测试分组', platform: 'openai', imageGeneration: true }], selectedGroup: '3',
     models: ['gpt-5.1'], modelLimitOverrides: {}, balanceStale: false,
     modelLimits: { contextWindow: 262144, maxInputTokens: 229376, maxOutputTokens: 32768 },
-    modelProtocols: [{ model: 'gpt-5.1', choice: 'auto', effective: 'openai-responses' }], usage: null, error: null }
+    modelProtocols: [{ model: 'gpt-5.1', choice: 'auto', effective: 'openai-responses', transport: 'sse' }], usage: null, error: null }
   remote.mock.unary('sub2apiAccount/getState', () => ok(view))
+  const setTransport = vi.fn(() => ok({ ...view, modelProtocols: [
+    { model: 'gpt-5.1', choice: 'auto', effective: 'openai-responses', transport: 'websocket' },
+  ] }))
+  remote.mock.unary('sub2apiAccount/setModelTransport', setTransport)
   remote.mock.stream('sub2apiAccount/watch', (_args, stream) => { stream.push(view) })
   remote.mock.unary('sub2apiAccount/getGateways', () => ok({ ok: true, data: { selected: null, active: 'https://platform.example', endpoints: [
     { id: 'https://platform.example', origin: 'https://platform.example', name: '主站', description: '', insecure: false },
@@ -62,6 +66,11 @@ it('mounts the native platform pages through the shipped client registrations', 
   fireEvent.click(screen.getByRole('button', { name: '模型' }))
   expect(await screen.findByRole('heading', { name: '平台模型' })).toBeTruthy()
   expect(await screen.findByLabelText('模型线路')).toHaveProperty('value', '')
+  const transport = screen.getByLabelText('gpt-5.1 · 传输方式')
+  expect(transport).toHaveProperty('value', 'sse')
+  fireEvent.change(transport, { target: { value: 'websocket' } })
+  await waitFor(() => { expect(transport).toHaveProperty('value', 'websocket') })
+  expect(setTransport).toHaveBeenCalledWith({ groupId: '3', model: 'gpt-5.1', transport: 'websocket' })
   fireEvent.click(screen.getByRole('button', { name: '充值与订阅' }))
   expect(await screen.findByRole('heading', { name: '充值与订阅' })).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: '发票申请' }))

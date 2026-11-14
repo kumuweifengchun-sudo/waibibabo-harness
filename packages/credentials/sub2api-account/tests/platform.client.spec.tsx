@@ -41,14 +41,15 @@ function fixture(plans: CheckoutView['plans'] = []) {
     ], selectedGroup: '3' as Sub2apiGroupId, models: ['gpt-5.1', 'gpt-image-2'],
     modelLimitOverrides: {}, balanceStale: false,
     modelLimits: { contextWindow: 262144, maxInputTokens: 229376, maxOutputTokens: 32768 }, modelProtocols: [
-      { model: 'gpt-5.1', choice: 'auto', effective: 'openai-responses' },
+      { model: 'gpt-5.1', choice: 'auto', effective: 'openai-responses', transport: 'sse' },
     ], usage: null, error: null }
   const account = createSnapshotStore<ClientAccountState>({ view, busy: false, failed: false, loginVisible: false, usageVisible: false })
   const actions: AccountInjected = { hooks: { account, usage: createSnapshotStore(initialUsageState()) },
     signIn: vi.fn(async () => {}), start: vi.fn(async () => {}), verify: vi.fn(async () => {}), cancel: vi.fn(async () => {}),
     signOut: vi.fn(async () => {}), refresh: vi.fn(async () => {}), selectGroup: vi.fn(async () => {}),
     setAccountOrigin: vi.fn(async () => {}),
-    setProtocol: vi.fn(async () => {}), setModelLimitOverride: vi.fn(async () => {}), setModelLimits: vi.fn(async () => {}),
+    setProtocol: vi.fn(async () => {}), setTransport: vi.fn(async () => {}),
+    setModelLimitOverride: vi.fn(async () => {}), setModelLimits: vi.fn(async () => {}),
     showLogin: vi.fn(), showUsage: vi.fn(), loadUsage: vi.fn(async () => {}) }
   const remote = {
     getGateways: vi.fn<PlatformRemote['getGateways']>(async () => ({ ok: true, value: { ok: true, data: gateways } })),
@@ -109,6 +110,41 @@ it('restores automatic model routing without changing the account connection', a
   expect(f.account.getSnapshot().view?.platformOrigin).toBe('https://platform.example')
 })
 
+it('explains both Responses transports, starts with SSE and saves the model choice', async () => {
+  const f = fixture()
+  render(<ModelSection {...f.props} />)
+  await screen.findByRole('combobox', { name: zh.gateways })
+  const transport = screen.getByRole('combobox', { name: 'gpt-5.1 · ' + zh.modelTransport })
+  expect(transport).toHaveProperty('value', 'sse')
+  expect(transport).toHaveProperty('disabled', false)
+  expect(screen.getByText(zh.transportSseHint)).toBeTruthy()
+  expect(screen.getByText(zh.transportWebSocketHint)).toBeTruthy()
+  expect(document.getElementById(transport.getAttribute('aria-describedby') ?? '')?.textContent).toContain(zh.transportWebSocketHint)
+  fireEvent.change(transport, { target: { value: 'websocket' } })
+  expect(f.actions.setTransport).toHaveBeenCalledWith('3', 'gpt-5.1', 'websocket')
+  expect(f.actions.setProtocol).not.toHaveBeenCalled()
+  await act(async () => { f.account.set({ ...f.account.getSnapshot(), busy: true }) })
+  expect(transport).toHaveProperty('disabled', true)
+  await act(async () => { f.account.set({ ...f.account.getSnapshot(), busy: false, view: { ...f.view,
+    modelProtocols: [{ model: 'gpt-5.1', choice: 'auto', effective: 'openai-responses', transport: 'websocket' }] } }) })
+  expect(transport).toHaveProperty('value', 'websocket')
+  fireEvent.change(transport, { target: { value: 'sse' } })
+  expect(f.actions.setTransport).toHaveBeenLastCalledWith('3', 'gpt-5.1', 'sse')
+})
+
+it('hides WebSocket choices for other protocols and retains the last selection on a save error', async () => {
+  const f = fixture()
+  render(<ModelSection {...f.props} />)
+  await screen.findByRole('combobox', { name: zh.gateways })
+  await act(async () => { f.account.set({ ...f.account.getSnapshot(), view: { ...f.view, error: 'storage' } }) })
+  expect(screen.getByRole('alert').textContent).toBe(zh.storage)
+  expect(screen.getByRole('combobox', { name: 'gpt-5.1 · ' + zh.modelTransport })).toHaveProperty('value', 'sse')
+  await act(async () => { f.account.set({ ...f.account.getSnapshot(), view: { ...f.view,
+    modelProtocols: [{ model: 'gpt-5.1', choice: 'openai-completions', effective: 'openai-completions', transport: null }] } }) })
+  expect(screen.queryByRole('combobox', { name: 'gpt-5.1 · ' + zh.modelTransport })).toBeNull()
+  expect(screen.queryByText(zh.transportWebSocketHint)).toBeNull()
+})
+
 it('submits images only on request and retains completed results across panel remount', async () => {
   const f = fixture()
   f.remote.generateImages.mockResolvedValue({ ok: true, value: { ok: true, data: { images: [{ id: 'image-1' as ImageOutputId,
@@ -155,11 +191,60 @@ it('opens the platform recharge page without creating a desktop balance order', 
   const f = fixture()
   const open = vi.spyOn(window, 'open').mockImplementation(() => null)
   render(<BillingSection {...f.props} />)
-  fireEvent.click(await screen.findByRole('button', { name: zh.billingWebRecharge }))
+  await screen.findByText(zh.billingNoPlans)
+  fireEvent.click(screen.getByRole('button', { name: zh.billingWebRecharge }))
   expect(open).toHaveBeenCalledWith('https://platform.example/purchase', '_blank', 'noopener,noreferrer')
-  expect(screen.queryByRole('button', { name: zh.billingCreate })).toBeNull()
-  expect(screen.queryByLabelText(zh.billingAmount + '（CNY）')).toBeNull()
+  expect(screen.queryByRole('button', { name: '创建充值订单' })).toBeNull()
+  expect(screen.queryByLabelText('充值金额（CNY）')).toBeNull()
+  expect(screen.queryByRole('combobox', { name: zh.billingMethod })).toBeNull()
+  expect(screen.queryByRole('heading', { name: zh.billingRecharge })).toBeNull()
+  expect(document.body.textContent).not.toMatch(/充值在浏览器中完成|单笔范围|支付手续费率/u)
   expect(f.remote.createOrder).not.toHaveBeenCalled()
+})
+
+it('uses the only available subscription payment method without showing a selector', async () => {
+  const f = fixture([testPlan])
+  const initial = await f.remote.getCheckout()
+  if (!initial.ok || !initial.value.ok) throw new Error('fixture checkout missing')
+  f.remote.getCheckout.mockResolvedValue({ ok: true, value: { ok: true, data: { ...initial.value.data,
+    methods: [{ id: 'disabled', name: '停用渠道', currency: 'CNY', minimum: 0, maximum: 0, feeRate: 0, available: false },
+      ...initial.value.data.methods] } } })
+  render(<BillingSection {...f.props} />)
+  const subscribe = await screen.findByRole('button', { name: zh.billingSubscribe })
+  expect(screen.queryByRole('combobox', { name: zh.billingMethod })).toBeNull()
+  fireEvent.click(subscribe)
+  await waitFor(() => { expect(f.remote.createOrder).toHaveBeenCalledWith({ amount: 10, method: 'alipay', kind: 'subscription', planId: '5' }) })
+})
+
+it('offers payment selection only when multiple channels can purchase a subscription', async () => {
+  const f = fixture([testPlan])
+  const initial = await f.remote.getCheckout()
+  if (!initial.ok || !initial.value.ok) throw new Error('fixture checkout missing')
+  f.remote.getCheckout.mockResolvedValue({ ok: true, value: { ok: true, data: { ...initial.value.data,
+    methods: [...initial.value.data.methods,
+      { id: 'wxpay', name: '微信支付', currency: 'CNY', minimum: 1, maximum: 5000, feeRate: 0, available: true }] } } })
+  render(<BillingSection {...f.props} />)
+  fireEvent.change(await screen.findByRole('combobox', { name: zh.billingMethod }), { target: { value: 'wxpay' } })
+  fireEvent.click(screen.getByRole('button', { name: zh.billingSubscribe }))
+  await waitFor(() => { expect(f.remote.createOrder).toHaveBeenCalledWith({ amount: 10, method: 'wxpay', kind: 'subscription', planId: '5' }) })
+  const multiple = await f.remote.getCheckout()
+  if (!multiple.ok || !multiple.value.ok) throw new Error('fixture checkout missing')
+  f.remote.getCheckout.mockResolvedValue({ ok: true, value: { ok: true, data: { ...multiple.value.data, plans: [] } } })
+  fireEvent.click(screen.getByRole('button', { name: zh.billingRefresh }))
+  await screen.findByText(zh.billingNoPlans)
+  expect(screen.queryByRole('combobox', { name: zh.billingMethod })).toBeNull()
+})
+
+it('explains unavailable subscription payment without showing an empty selector', async () => {
+  const f = fixture([testPlan])
+  const initial = await f.remote.getCheckout()
+  if (!initial.ok || !initial.value.ok) throw new Error('fixture checkout missing')
+  f.remote.getCheckout.mockResolvedValue({ ok: true, value: { ok: true, data: { ...initial.value.data, methods: [] } } })
+  render(<BillingSection {...f.props} />)
+  await screen.findByText(zh.billingNoMethod)
+  expect(screen.queryByRole('combobox', { name: zh.billingMethod })).toBeNull()
+  expect(screen.getByRole('button', { name: zh.billingSubscribe })).toHaveProperty('disabled', true)
+  expect(screen.getByRole('button', { name: zh.billingWebRecharge })).toHaveProperty('disabled', false)
 })
 
 it('renders platform Markdown headings, tables and emphasis without executing HTML', async () => {

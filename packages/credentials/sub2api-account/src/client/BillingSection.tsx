@@ -52,8 +52,8 @@ function BillingContent(props: PlatformProps) {
     }
   }
   const checkout = state.checkout
-  const method = checkout?.methods.find(value => value.id === methodId && value.available)
-    ?? checkout?.methods.find(value => value.available)
+  const methods = checkout?.methods.filter(value => value.available) ?? []
+  const method = methods.find(value => value.id === methodId) ?? methods[0]
   const busy = state.loading.billing
   const blocked = busy || state.orderUncertain || method === undefined || checkout?.enabled !== true
   const paymentState = state.paymentState?.id === state.payment?.id ? state.paymentState : null
@@ -67,24 +67,21 @@ function BillingContent(props: PlatformProps) {
   </>
   return <section className={css.section}>
     <div className={css.header}><h2>{t('billingTitle')}</h2><Button variant="outline" disabled={busy} onClick={() => { setActiveForm(null); void loadBilling() }}>{t('billingRefresh')}</Button></div>
-    <p className={css.muted}>{t('billingDescription')}</p>
     <div><Button variant="primary" disabled={platformOrigin === undefined} onClick={() => {
       if (platformOrigin !== undefined) window.open(new URL('/purchase', platformOrigin).href, '_blank', 'noopener,noreferrer')
     }}>{t('billingWebRecharge')}</Button></div>
-    <p className={css.muted}>{t('billingWebRechargeHint')}</p>
     <PlatformNotice t={t} loading={busy && !creating} error={activeForm === null ? state.errors.billing : null} />
     {activeForm === null && state.orderUncertain && <p className={css.error}>{t('billingUnknown')}</p>}
     {checkout !== null && <>
       {!checkout.enabled && <p>{t('billingDisabled')}</p>}
-      <label className={css.form}>{t('billingMethod')}<select value={method?.id ?? ''} disabled={busy || !checkout.enabled} onChange={(event) => { setMethod(event.target.value) }}>
-        {method === undefined && <option value="">{t('billingNoMethod')}</option>}
-        {checkout.methods.map(value => <option key={value.id} value={value.id} disabled={!value.available}>{value.name}{value.currency ? ` · ${value.currency}` : ''}</option>)}
-      </select></label>
-      {method !== undefined && <p className={css.muted}>{t('billingLimits', { minimum: money(method.minimum, method.currency),
-        maximum: method.maximum ? money(method.maximum, method.currency) : t('billingNoMaximum') })} · {t('billingFee', { value: String(method.feeRate) })}</p>}
-      <h3>{t('billingRecharge')}</h3>
       {checkout.notice && <MarkdownText text={checkout.notice} labels={markdownLabels} variant="compact" omitHtml />}
       <h3>{t('billingPlans')}</h3>
+      {checkout.enabled && checkout.plans.length > 0 && <>
+        {methods.length > 1 && <label className={css.form}>{t('billingMethod')}<select value={method?.id ?? ''} disabled={busy} onChange={(event) => { setMethod(event.target.value) }}>
+          {methods.map(value => <option key={value.id} value={value.id}>{value.name}{value.currency ? ` · ${value.currency}` : ''}</option>)}
+        </select></label>}
+        {method === undefined && <p className={css.muted}>{t('billingNoMethod')}</p>}
+      </>}
       {!checkout.plans.length ? <p className={css.muted}>{t('billingNoPlans')}</p> : <div className={css.cards}>{checkout.plans.map(plan => <article key={plan.id}>
         <div className={css.header}><h4>{plan.name}</h4><strong>{money(plan.price, plan.currency)}</strong></div>
         {plan.description && <MarkdownText text={plan.description} labels={markdownLabels} variant="compact" omitHtml />}<p className={css.muted}>{plan.group}</p>

@@ -12,7 +12,7 @@
 
 [Sub2API 账号提供方](../../packages/credentials/sub2api-account/README.md) 管理桌面平台登录和分组推理密钥租约。`Sub2apiGroupId` 与 `Sub2apiUserId` 是带品牌的字符串标识。用于展示的 `AccountView` 包含登录进度、账号资料、可用分组、选定模型、用量和本地化错误类别；令牌保留在 Host 凭据存储中。
 
-`ModelProtocolChoice` 为一个分组与模型组合选择自动路由，或显式的 Responses、Messages、Chat Completions、Gemini 协议。`ModelLimits` 提供全局与分组内单模型的上下文、输入、输出预算；没有覆盖值的模型继承全局默认值。`UsageQuery` 包含分页、最多 90 天的本地日期闭区间、时区、模型、分组和流式筛选；用户身份只来自已保存的授权。`UsageResult` 返回可展示的记录与服务端统计，或本地化错误类别；统计不可用时保留记录，并单独返回统计错误。Host 剔除凭据和管理员字段，客户端在账号变化时清除缓存记录。持久化与接口要求见[账号包](../../packages/credentials/sub2api-account/README.md)。
+`ModelProtocolChoice` 为一个分组与模型组合选择自动路由，或显式的 Responses、Messages、Chat Completions、Gemini 协议。`ModelTransport` 为 Responses 模型选择 `sse` 或 `websocket`；其他协议的 `ModelProtocolView.transport` 为 null。`ModelLimits` 提供全局与分组内单模型的上下文、输入、输出预算；没有覆盖值的模型继承全局默认值。`UsageQuery` 包含分页、最多 90 天的本地日期闭区间、时区、模型、分组和流式筛选；用户身份只来自已保存的授权。`UsageResult` 返回可展示的记录与服务端统计，或本地化错误类别；统计不可用时保留记录，并单独返回统计错误。Host 剔除凭据和管理员字段，客户端在账号变化时清除缓存记录。持久化与接口要求见[账号包](../../packages/credentials/sub2api-account/README.md)。
 
 引用以 POSIX 风格环境变量名命名一条凭据。brand 防止调用方将凭据引用与在包或进程之间传递的其他字符串混用；构造时校验 shell 标识符语法。
 
@@ -409,6 +409,14 @@ Owns account credentials, browser attempts and the model routes they authorize.
  * @returns state after durable storage and model registration; already prepared requests keep their original protocol.
  */
 @Remote setModelProtocol(groupId: Sub2apiGroupId, model: string, protocol: ModelProtocolChoice): Promise<AccountView>
+
+/** Save the Responses transport for a model in the selected group.
+ * @param groupId - Group shown when the client rendered the control.
+ * @param model - Exact id of a current-group model using Responses.
+ * @param transport - HTTP streaming or WebSocket with safe HTTP fallback.
+ * @returns state after persistence; subsequent requests use the selection and active requests may finish.
+ */
+@Remote setModelTransport(groupId: Sub2apiGroupId, model: string, transport: ModelTransport): Promise<AccountView>
 
 /** Save the allocation inherited by models without an override.
  * @param limits - Context budget and disjoint input/output caps.

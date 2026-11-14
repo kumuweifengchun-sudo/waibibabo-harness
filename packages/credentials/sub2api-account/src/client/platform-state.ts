@@ -65,6 +65,7 @@ export interface PlatformInjected {
   hooks: { account: AccountInjected['hooks']['account']; platform: HostObservable<PlatformState> }
   selectGroup: AccountInjected['selectGroup']
   setProtocol: AccountInjected['setProtocol']
+  setTransport: AccountInjected['setTransport']
   setModelLimits: AccountInjected['setModelLimits']
   setModelLimitOverride: AccountInjected['setModelLimitOverride']
   showLogin: AccountInjected['showLogin']

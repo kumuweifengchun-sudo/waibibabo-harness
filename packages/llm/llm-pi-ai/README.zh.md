@@ -151,7 +151,7 @@ Config 更新严格验证发生变化的 provider。初始加载将已存储的�
 <a id="request-headers"></a>
 ### 请求头
 
-直接使用 `PiAiAdapter` 的调用方可通过 `responsesFetch` 为每次已准备的 OpenAI Responses 请求绑定兼容 Fetch 的传输实现。它接收与请求头贡献器相同的不可变路由元数据；其他协议保留原生 SDK 传输。调用方负责取消与连接清理。SDK 仍序列化完整请求、解析事件并提供回放元数据和用量；传输返回的 HTTP 形式响应必须保留这些语义。
+直接使用 `PiAiAdapter` 的调用方可通过 `responsesFetch` 为每次已准备的 OpenAI Responses 请求绑定兼容 Fetch 的传输实现。它接收不可变路由元数据和每次尝试独立的 `reportFailure` 回调，在 SDK 将错误压成文本时保留终止请求的 `LlmError`。调用方取消和空闲超时优先，恢复由 Agent 重试策略负责。其他协议保留原生 SDK 传输。调用方负责取消与连接清理。SDK 仍序列化完整请求、解析事件并提供回放元数据和用量；传输返回的 HTTP 形式响应必须保留这些语义。
 
 插件可通过同步的 `llm-pi-ai/request-headers` waterfall 贡献模型不可见的传输元数据。每次推理调用提供不可变的路由元数据（`PiAiRequestHeaderContext`）和从 profile 标头复制出的独立 `Headers`；配置名称仅大小写不同时，以最后一个条目为准。端点来自已准备的模型，因此并发调用与配置变更不会交换请求头状态。监听器修改该副本、调用 `next()`，并在返回时释放对它的引用；所属插件卸载时，`ctx.on()` 会移除注册。Harness 的应用标识在所有贡献器之后写入，pi-ai 接收独立的标头记录。
 

@@ -8,10 +8,12 @@ export interface Config {
   platformOrigin: string
   /** Additional trusted account API origins serving the same OAuth resource. */
   accountOrigins?: string[]
-  /** Deadline for account metadata and inference model-list connection probes, in milliseconds. */
+  /** Deadline for account metadata, model-list probes, and Responses socket handshakes and health checks, in milliseconds. */
   connectionProbeTimeoutMs?: number
-  /** Responses transport: prefer WebSocket with pre-submission HTTP fallback, or always use HTTP streaming. */
+  /** Default Responses transport before per-model overrides: HTTP streaming, or auto to prefer WebSocket with HTTP fallback. */
   responsesTransport?: 'auto' | 'sse'
+  /** Enable automatic previous_response_id chaining only for gateways with verified incremental Responses support. */
+  responsesIncrementalHistory?: boolean
   /** Idle lifetime of reusable Responses WebSocket connections, in milliseconds. */
   responsesSocketIdleMs?: number
   /** Maximum retained Responses connections; concurrent overflow requests use temporary connections. */
@@ -51,7 +53,8 @@ export const Config = z.object({
   platformOrigin: z.string().required(),
   accountOrigins: z.array(z.string()).default([]),
   connectionProbeTimeoutMs: z.natural().min(100).default(5000),
-  responsesTransport: z.union(['auto', 'sse']).default('auto'),
+  responsesTransport: z.union(['auto', 'sse']).default('sse'),
+  responsesIncrementalHistory: z.boolean().default(false),
   responsesSocketIdleMs: z.natural().min(1000).default(120000),
   responsesSocketLimit: z.natural().min(1).default(16),
   responsesFallbackCooldownMs: z.natural().min(1000).default(60000),

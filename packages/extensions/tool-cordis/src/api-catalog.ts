@@ -3695,6 +3695,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'state after durable storage and model registration; already prepared requests keep their original protocol.',
       },
       {
+        signature: '@Remote setModelTransport(groupId: Sub2apiGroupId, model: string, transport: ModelTransport): Promise<AccountView>',
+        description: 'Save the Responses transport for a model in the selected group.',
+        parameters: [{ name: 'groupId', description: 'Group shown when the client rendered the control.' }, { name: 'model', description: 'Exact id of a current-group model using Responses.' }, { name: 'transport', description: 'HTTP streaming or WebSocket with safe HTTP fallback.' }],
+        returns: 'state after persistence; subsequent requests use the selection and active requests may finish.',
+      },
+      {
         signature: '@Remote setModelLimits(limits: ModelLimits): Promise<AccountView>',
         description: 'Save the allocation inherited by models without an override.',
         parameters: [{ name: 'limits', description: 'Context budget and disjoint input/output caps.' }],
@@ -7637,6 +7643,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ModelReasoningEffort',
     declaration: 'export interface ModelReasoningEffort {\n    readonly id: string;\n    readonly name: string;\n    readonly description?: string;\n}',
+  },
+  {
+    name: 'ModelTransport',
+    declaration: 'export type ModelTransport = \'sse\' | \'websocket\';',
   },
   {
     name: 'ModEvents',

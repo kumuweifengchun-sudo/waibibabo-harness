@@ -74,7 +74,8 @@ export function createPlatformClient(remote: PlatformRemote, account: AccountInj
     hooks: { account: account.hooks.account, platform: { getSnapshot: () => state, subscribe: (listener) => {
       listeners.add(listener); return () => { listeners.delete(listener) }
     } } },
-    selectGroup: account.selectGroup, setProtocol: account.setProtocol, setModelLimits: account.setModelLimits,
+    selectGroup: account.selectGroup, setProtocol: account.setProtocol, setTransport: account.setTransport,
+    setModelLimits: account.setModelLimits,
     setModelLimitOverride: account.setModelLimitOverride,
     showLogin: account.showLogin, refresh: account.refresh,
     loadGateways: async () => { await run('gateways', signal => remote.getGateways(signal), (gateways) => { publish({ gateways }) }) },
