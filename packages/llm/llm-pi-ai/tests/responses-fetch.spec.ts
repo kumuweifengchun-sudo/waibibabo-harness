@@ -18,7 +18,7 @@ async function harness(responsesFetch: NonNullable<ConstructorParameters<typeof 
 }
 
 it.each(['fetch', 'stream'] as const)('preserves typed %s failures separately for concurrent attempts', async (location) => {
-  const failures = [new LlmError('Transport detail containing 401', 'TRANSPORT'), new LlmError('Unknown outcome', 'RESPONSES_OUTCOME_UNKNOWN')]
+  const failures = [new LlmError('Transport detail containing 401', 'TRANSPORT'), LlmError.fromFailure({ message: 'Unknown outcome', code: 'RESPONSES_OUTCOME_UNKNOWN' })]
   let attempts = 0
   const ctx = await harness((_request, reportFailure) => {
     const failure = failures[attempts++]!

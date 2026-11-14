@@ -431,13 +431,13 @@ describe('the default seatbelt probe (sandbox-exec contract)', () => {
 
 describe('the windows-acl probe (runner invocation contract)', () => {
   it('passes physical extra roots to Windows runners and ignores them in read-only mode', async () => {
-    const extra = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-extra-root-')))
-    tempDirs.push(extra)
     const { ctx, sandbox } = await setup({}, {
       chain: ['windows-acl'],
       probeWindowsAcl: () => true,
       windowsAclRunnerArgs: ['node', 'windows-acl-runner.js'],
     })
+    const extra = realpathSync.native(mkdtempSync(join(tmpdir(), 'dsh-extra-acl-')))
+    tempDirs.push(extra)
     try {
       const allowed = await sandbox.confine(['true'], { ...WW, additionalWritableRoots: [extra] })
       expect(allowed.argv).toContain('--writable-root')

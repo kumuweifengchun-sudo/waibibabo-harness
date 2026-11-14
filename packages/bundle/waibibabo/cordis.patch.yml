@@ -2,8 +2,6 @@
   disabled: true
 - id: llm-deepseek-account
   disabled: true
-- id: account-controller
-  disabled: true
 - id: ui-settings-account
   disabled: true
 - id: ui-settings-models

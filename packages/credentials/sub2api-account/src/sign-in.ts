@@ -86,7 +86,7 @@ export function createAttempt(ctx: Context, http: PlatformClient, config: Return
       controller.abort()
     },
   }
-  const remove = ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: callback.pathname, handler: async (request, response) => {
+  const remove = ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: callback.pathname, auth: 'anonymous', handler: async (request, response) => {
     response.setHeader('Cache-Control', 'no-store')
     response.setHeader('Content-Type', 'text/html; charset=utf-8')
     response.setHeader('Referrer-Policy', 'no-referrer')

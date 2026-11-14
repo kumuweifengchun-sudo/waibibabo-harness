@@ -291,7 +291,7 @@ export class ResponsesTransport {
           unavailable()
           const failure = transient && replayableRequest.safeParse(body).success
             ? new LlmError(`WS 连接中断（${detail}）；可重试当前模型请求，上游生成和计费状态未知`, 'TRANSPORT')
-            : new LlmError(`WS 请求已提交，但无法确认是否完成（${detail}）；请查看平台使用日志后重试`, 'RESPONSES_OUTCOME_UNKNOWN')
+            : LlmError.fromFailure({ message: `WS 请求已提交，但无法确认是否完成（${detail}）；请查看平台使用日志后重试`, code: 'RESPONSES_OUTCOME_UNKNOWN' })
           reportFailure?.(failure)
           finish(failure)
         }

@@ -1,6 +1,7 @@
 /** Sub2API account operations and group-scoped model registration for a local Host. */
 import { Context, Service } from '@deepseek-ai/cordis'
-import { credentialKey } from '@deepseek-ai/dsh-credentials'
+import type { CredentialKey } from '@deepseek-ai/dsh-credentials'
+import { brandString } from '@deepseek-ai/dsh-brand'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { LlmError, resolveImageAttachmentAccess, type AdapterRegistrationHandle } from '@deepseek-ai/dsh-llm'
 import { PiAiAdapter } from '@deepseek-ai/dsh-llm-pi-ai'
@@ -31,8 +32,8 @@ declare module '@deepseek-ai/cordis' {
   interface Context { sub2apiAccount: Sub2apiAccount }
 }
 
-const RECORD = credentialKey('sub2api-account', 'desktop')
-const CONNECTION_RECORD = credentialKey('sub2api-account', 'connection')
+const RECORD = brandString<CredentialKey>('sub2api-account/desktop')
+const CONNECTION_RECORD = brandString<CredentialKey>('sub2api-account/connection')
 const storedConnection = z.object({ issuer: z.string(), origin: z.string().nullable() })
 const protocolSchema = z.enum(['openai-completions', 'openai-responses', 'anthropic-messages', 'google-generative-ai'])
 const transportSchema = z.enum(['sse', 'websocket'])
