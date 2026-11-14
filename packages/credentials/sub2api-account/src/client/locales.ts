@@ -7,6 +7,10 @@ export const zh = {
   chooseModel: '选择要单独配置的模型',
   imageSelectModel: '选择图片模型', imageManualModel: '模型名称（可自行输入）', imageRefreshModels: '刷新模型',
   imageSettings: '生成设置', imageEnterModel: '手动输入', imageChooseModel: '从列表选择', imageModelsLoading: '正在加载模型…',
+  imageReferences: '参考图（可选）', imageUpload: '上传参考图', imageReading: '正在读取参考图…', imageRemove: '移除',
+  imageRemoveReference: '移除参考图：{name}',
+  imageReferenceHint: '支持 PNG、JPEG、WebP，最多 {count} 张、合计 {size} MiB；添加后按参考图和提示词生成，需模型支持',
+  imageReferenceError: '参考图添加失败，请检查图片格式、数量和总大小后重新选择，已有参考图已保留',
   imageGeneratingAction: '正在生成…', imageEmptyTitle: '等待生成图片', imageResultCount: '{count} 张图片', imageRevisedPrompt: '查看优化后的提示词',
   imageSquare: '1:1 方形 · 1024 × 1024', imageLandscape: '3:2 横向 · 1536 × 1024', imagePortrait: '2:3 纵向 · 1024 × 1536',
   imageWide: '16:9 宽屏 · 1536 × 864', imageTall: '9:16 竖屏 · 864 × 1536', imageSizeCustom: '自定义宽高',
@@ -120,6 +124,15 @@ export const zh = {
 
 /** 账号界面可使用的文案键。 */
 export type AccountKey = keyof typeof zh
+
+/** English reference-image controls with the existing account dictionary as fallback. */
+export const en: Record<AccountKey, string> = {
+  ...zh,
+  imageReferences: 'Reference images (optional)', imageUpload: 'Upload reference images', imageReading: 'Reading reference images…',
+  imageRemove: 'Remove', imageRemoveReference: 'Remove reference image: {name}',
+  imageReferenceHint: 'PNG, JPEG or WebP; up to {count} images and {size} MiB total. References and the prompt guide generation on supported models.',
+  imageReferenceError: 'Could not add reference images. Check their format, count and total size, then select them again. Existing references are retained.',
+}
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap { 'sub2api.account': AccountKey }

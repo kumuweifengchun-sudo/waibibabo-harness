@@ -3800,6 +3800,10 @@ export interface Config {
   invoiceTimeoutMs?: number
   /** Maximum image gateway JSON body, including base64 output. */
   imageResponseLimitBytes?: number
+  /** Maximum combined decoded reference-image bytes per request. */
+  imageReferenceLimitBytes?: number
+  /** Maximum number of reference images per request. */
+  imageReferenceMaxCount?: number
   /** Absolute duration of a sign-in attempt, in milliseconds. */
   attemptTimeoutMs?: number
   /** Refresh access tokens and inference leases before this remaining lifetime. */

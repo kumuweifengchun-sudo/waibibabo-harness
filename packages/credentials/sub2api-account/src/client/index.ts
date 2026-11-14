@@ -12,7 +12,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-file-actions/client'
 import remote from '@deepseek-ai/dsh-sub2api-account/remote'
 import type { AccountView } from '../types.ts'
 import { AccountContent, AccountGate, AccountLauncher, AccountSection, type AccountInjected, type ClientAccountState } from './AccountSection.tsx'
-import { zh } from './locales.ts'
+import { en, zh } from './locales.ts'
 import { UsageOverlay, UsageSection } from './UsageSection.tsx'
 import { initialUsageState, type UsageState } from './usage-state.ts'
 import { createPlatformClient } from './platform-client.ts'
@@ -32,7 +32,7 @@ export function apply(ctx: Context): void {
   ctx.plugin(async (owner) => {
     await owner.remote.$mount(remote)
     owner.inject(['remote.sub2apiAccount', 'slots', 'locale', 'remoteAccess', 'fileActions'], (scope) => {
-      scope.effect(() => scope.locale.register('sub2api.account', { en: zh, zh }), 'sub2api-account: dictionaries')
+      scope.effect(() => scope.locale.register('sub2api.account', { en, zh }), 'sub2api-account: dictionaries')
       const t = scope.locale.bind('sub2api.account')
       const account = scope.remote.sub2apiAccount
       let snapshot: ClientAccountState = { view: undefined, busy: false, failed: false, loginVisible: true, usageVisible: false }

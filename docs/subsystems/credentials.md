@@ -8,7 +8,7 @@ Source: [`packages/credentials/credentials/src/index.ts`](../../packages/credent
 
 ## Identity
 
-The desktop provider's `PlatformResult<T>` carries a display-safe value or an account failure category. `GatewayId`, `PaymentOrderId`, `SubscriptionPlanId`, `InvoiceId`, `InvoiceFileId`, `ImageOutputId`, and `InvoiceRequestKey` are distinct branded strings. `GatewayView` lists administrator-advertised inference origins and the saved selection; account requests keep the configured OAuth origin. `ImageRequest` selects an authorized group independently of the chat group, while `ImageResult` contains bounded image URLs or bytes. `CheckoutView`, `OrderRequest`, `PaymentLaunch`, `PaymentOrder`, `OrderPage`, and `SubscriptionView` describe platform-owned prices, payment targets, orders and current subscriptions. `InvoiceRequest` carries application fields, evidence, an edit version and a stable retry key; `InvoiceView`, `InvoicePage`, `InvoiceQuote`, and `PlatformFile` expose owned applications, amounts and validated attachments. `PlatformPageQuery` never accepts a user id. Mutation failures with unknown outcomes are not retried automatically.
+The desktop provider's `PlatformResult<T>` carries a display-safe value or an account failure category. `GatewayId`, `PaymentOrderId`, `SubscriptionPlanId`, `InvoiceId`, `InvoiceFileId`, `ImageOutputId`, `ImageReferenceId`, and `InvoiceRequestKey` are distinct branded strings. `GatewayView` lists administrator-advertised inference origins and the saved selection; account requests keep the configured OAuth origin. `ImageRequest` selects an authorized group independently of the chat group and optionally carries `ImageReference` files for editing, while `ImageResult` contains bounded image URLs or bytes. `AccountView.imageUploadLimits` exposes the Host-configured `ImageUploadLimits` for reference count and combined decoded bytes. `CheckoutView`, `OrderRequest`, `PaymentLaunch`, `PaymentOrder`, `OrderPage`, and `SubscriptionView` describe platform-owned prices, payment targets, orders and current subscriptions. `InvoiceRequest` carries application fields, evidence, an edit version and a stable retry key; `InvoiceView`, `InvoicePage`, `InvoiceQuote`, and `PlatformFile` expose owned applications, amounts and validated attachments. `PlatformPageQuery` never accepts a user id. Mutation failures with unknown outcomes are not retried automatically.
 
 The [Sub2API account provider](../../packages/credentials/sub2api-account/README.md) owns desktop platform login and group-scoped inference leases. Its `Sub2apiGroupId` and `Sub2apiUserId` are branded string identifiers. Its display-safe `AccountView` carries login progress, account details, available groups, selected models, usage, and a localized failure category; tokens stay in the Host credential store.
 
@@ -482,7 +482,7 @@ Owns account credentials, browser attempts and the model routes they authorize.
 @Remote getImageModels(groupId: Sub2apiGroupId, signal?: AbortSignal): Promise<PlatformResult<readonly string[]>>
 
 /** Generate images through one authorized group without changing the conversation model.
- * @param input - Explicit user prompt and image options.
+ * @param input - Explicit user prompt, image options and optional reference files for image editing.
  * @param signal - User cancellation; cancellation does not reverse possible upstream billing.
  * @returns image previews or an explicit failure, with no automatic request replay.
  */

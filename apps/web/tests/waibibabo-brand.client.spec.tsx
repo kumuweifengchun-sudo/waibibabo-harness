@@ -29,7 +29,7 @@ it('mounts the native platform pages through the shipped client registrations', 
     connection: { origins: ['https://platform.example'], selected: null, active: 'https://platform.example' },
     authorizationUrl: null, profile: { id: '7', email: 'user@example.com', name: '测试账号', balance: 10 },
     groups: [{ id: '3', name: '测试分组', platform: 'openai', imageGeneration: true }], selectedGroup: '3',
-    models: ['gpt-5.1'], modelLimitOverrides: {}, balanceStale: false,
+    models: ['gpt-5.1'], modelLimitOverrides: {}, balanceStale: false, imageUploadLimits: { maxCount: 16, maxBytes: 20 * 1024 * 1024 },
     modelLimits: { contextWindow: 262144, maxInputTokens: 229376, maxOutputTokens: 32768 },
     modelProtocols: [{ model: 'gpt-5.1', choice: 'auto', effective: 'openai-responses', transport: 'sse' }], usage: null, error: null }
   remote.mock.unary('sub2apiAccount/getState', () => ok(view))
@@ -82,7 +82,7 @@ it('shows the supplied logo and both sign-in methods in the assembled login dial
   const view = { productName: 'Waibibabo Harnesss', platformOrigin: 'https://platform.example', status: 'signed-out',
     connection: { origins: ['https://platform.example'], selected: null, active: null },
     authorizationUrl: null, profile: null, groups: [], selectedGroup: null, models: [], modelProtocols: [],
-    modelLimitOverrides: {}, balanceStale: false,
+    modelLimitOverrides: {}, balanceStale: false, imageUploadLimits: { maxCount: 16, maxBytes: 20 * 1024 * 1024 },
     modelLimits: { contextWindow: 262144, maxInputTokens: 229376, maxOutputTokens: 32768 }, usage: null, error: null }
   remote.mock.unary('sub2apiAccount/getState', () => ok(view))
   remote.mock.stream('sub2apiAccount/watch', (_args, stream) => { stream.push(view) })

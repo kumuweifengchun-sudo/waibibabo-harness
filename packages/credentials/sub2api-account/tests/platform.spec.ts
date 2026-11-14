@@ -1,7 +1,7 @@
 import { createServer } from 'node:http'
 import { afterEach, expect, it } from 'vitest'
 import { pixel, invoiceFileId, invoiceInput, platformFixture } from './platform-fixture.ts'
-import type { GatewayId, InvoiceFileId, PaymentOrderId, Sub2apiGroupId, SubscriptionPlanId } from '../src/types.ts'
+import type { GatewayId, ImageReferenceId, InvoiceFileId, PaymentOrderId, Sub2apiGroupId, SubscriptionPlanId } from '../src/types.ts'
 
 const close: Array<() => Promise<void>> = []
 afterEach(async () => { for (const stop of close.splice(0)) await stop() })
@@ -46,6 +46,33 @@ it('generates authorized images without changing the conversation group or expos
   const requests = f.requests.filter(request => request.path === '/v1/images/generations')
   expect(requests).toHaveLength(1)
   expect(requests[0]?.body).toEqual({ model: 'gpt-image-2', prompt: 'A blue square', n: 1, size: '1024x1024' })
+})
+
+it('sends reference bytes to the editing endpoint with only the selected group lease', async () => {
+  const f = await platformFixture()
+  const references = ['first.png', 'second.png'].map(name => ({ id: name as ImageReferenceId, name, mime: 'image/png', base64: pixel }))
+  const input = { groupId: '4' as Sub2apiGroupId, model: 'gpt-image-2', prompt: 'Combine the references', count: 2, size: '1024x1024', references }
+  expect(await f.account.generateImages(input)).toMatchObject({ ok: true, data: { images: [{ source: 'data:image/png;base64,' + pixel }] } })
+  const form = f.imageForms[0]!
+  expect(Object.fromEntries(['model', 'prompt', 'n', 'size'].map(key => [key, form.get(key)]))).toEqual({
+    model: input.model, prompt: input.prompt, n: '2', size: input.size,
+  })
+  const files = form.getAll('image[]')
+  expect(files).toHaveLength(2)
+  for (const [index, file] of files.entries()) {
+    if (typeof file === 'string') throw new Error('Expected uploaded file')
+    expect(file.name).toBe(references[index]?.name)
+    expect(file.type).toBe('image/png')
+    expect(Buffer.from(await file.arrayBuffer()).toString('base64')).toBe(pixel)
+  }
+  expect((await f.account.getState()).selectedGroup).toBe('3')
+  expect(f.requests.filter(request => request.path === '/v1/images/generations')).toHaveLength(0)
+  expect(await f.account.generateImages({ ...input, references: [{ ...references[0]!, mime: 'image/jpeg' }] })).toMatchObject({ ok: false, error: 'validation' })
+  expect(await f.account.generateImages({ ...input, groupId: '3' as Sub2apiGroupId })).toMatchObject({ ok: false, error: 'unavailable' })
+  expect(f.requests.filter(request => request.path === '/v1/images/edits')).toHaveLength(1)
+  f.fail('/v1/images/edits', 500)
+  expect(await f.account.generateImages(input)).toMatchObject({ ok: false, error: 'uncertain' })
+  expect(f.requests.filter(request => request.path === '/v1/images/edits')).toHaveLength(2)
 })
 
 it('uses the website checkout, owned order verification and supported payment destinations', async () => {

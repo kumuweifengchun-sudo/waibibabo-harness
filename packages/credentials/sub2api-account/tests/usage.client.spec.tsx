@@ -26,6 +26,7 @@ function fixture(signedIn = true) {
       profile: signedIn ? { id: '7' as Sub2apiUserId, name: 'Example', email: 'user@example.com', balance: 10 } : null,
       groups: [{ id: '3' as Sub2apiGroupId, name: 'Standard', platform: 'openai', imageGeneration: false }], selectedGroup: null,
       models: [], modelProtocols: [], modelLimitOverrides: {}, balanceStale: false,
+      imageUploadLimits: { maxCount: 16, maxBytes: 20 * 1024 * 1024 },
       modelLimits: { contextWindow: 262144, maxInputTokens: 229376, maxOutputTokens: 32768 },
       usage: null, error: null } })
   const usage = createSnapshotStore<UsageState>({ ...initialUsageState(new Date(2026, 10, 12)),

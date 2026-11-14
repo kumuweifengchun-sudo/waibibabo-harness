@@ -1,5 +1,5 @@
 /** User-triggered image generation in the existing main-panel navigation. */
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Button, Input, Modal, IconSparkleRegular, IconLoadingOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
@@ -29,6 +29,7 @@ function ImageContent(props: PlatformProps) {
   const groupId = group?.id
   useEffect(() => { if (groupId !== undefined) void loadImageModels(groupId) }, [groupId, loadImageModels])
   const busy = state.loading.images
+  const uploading = state.loading.imageUploads
   const suggestions = state.imageModelsGroup === groupId ? state.imageModels : []
   const preview = state.imageResult?.images.find(image => image.id === enlarged)
   const formId = useId()
@@ -61,6 +62,7 @@ function ImageContent(props: PlatformProps) {
         <label className={styles.field}>{t('imagePrompt')}<textarea value={draft.prompt} placeholder={t('imagePromptHint')}
           rows={5} required maxLength={32000} disabled={busy}
           onChange={(event) => { updateImageDraft({ prompt: event.target.value }) }} /></label>
+        <ImageReferences {...props} />
         <div className={styles.options}>
           <label className={styles.field}>{t('imageCount')}<Input className={styles.input ?? ''} type="number" min={1} max={10} value={draft.count} disabled={busy}
             onChange={(event) => { updateImageDraft({ count: Number(event.target.value) }) }} /></label>
@@ -68,7 +70,7 @@ function ImageContent(props: PlatformProps) {
         </div>
         <p className={styles.hint}>{t('imageSizeHint')}</p>
         <Button className={styles.generate} variant="primary" type="submit"
-          disabled={busy || group === undefined || !draft.model.trim() || !draft.prompt.trim() || !sizeValid}>
+          disabled={busy || uploading || group === undefined || !draft.model.trim() || !draft.prompt.trim() || !sizeValid}>
           {t(busy ? 'imageGeneratingAction' : 'imageGenerate')}
         </Button>
       </form>
@@ -124,6 +126,43 @@ function ImageContent(props: PlatformProps) {
       {preview !== undefined && <img className={styles.imageFull} src={preview.source} alt={t('imageFullPreview')} referrerPolicy="no-referrer" />}
     </Modal>
   </section></div>
+}
+
+function ImageReferences({ useAccount, usePlatform, addImageReferences, updateImageDraft, t }: PlatformProps) {
+  const limits = useAccount(value => value.view?.imageUploadLimits)
+  const state = usePlatform(value => value)
+  const picker = useRef<HTMLInputElement>(null)
+  const labelId = useId()
+  const hintId = useId()
+  if (limits === undefined) return null
+  const references = state.imageDraft.references ?? []
+  const busy = state.loading.images || state.loading.imageUploads
+  return <section className={styles.field} aria-labelledby={labelId}>
+    <div className={styles.sectionHead}>
+      <span id={labelId}>{t('imageReferences')}</span>
+      <Button size="sm" variant="outline" disabled={busy || references.length >= limits.maxCount}
+        onClick={() => { picker.current?.click() }}>{t('imageUpload')}</Button>
+      <input ref={picker} type="file" accept="image/png,image/jpeg,image/webp" multiple hidden disabled={busy}
+        aria-label={t('imageUpload')} aria-describedby={hintId} onChange={(event) => {
+          const files = Array.from(event.currentTarget.files ?? [])
+          event.currentTarget.value = ''
+          void addImageReferences(files)
+        }} />
+    </div>
+    <p id={hintId} className={styles.hint}>{t('imageReferenceHint', {
+      count: String(limits.maxCount), size: String(limits.maxBytes / 1024 / 1024),
+    })}</p>
+    {state.loading.imageUploads && <p className={styles.hint} role="status">{t('imageReading')}</p>}
+    {state.errors.imageUploads !== null && <p className={css.error} role="alert">{t('imageReferenceError')}</p>}
+    {references.map(reference => <figure className={styles.reference} key={reference.id}>
+      <img src={`data:${reference.mime};base64,${reference.base64}`} alt={reference.name} />
+      <figcaption>{reference.name}</figcaption>
+      <Button size="sm" variant="ghost" disabled={busy} aria-label={t('imageRemoveReference', { name: reference.name })}
+        onClick={() => { updateImageDraft({ references: references.filter(value => value.id !== reference.id) }) }}>
+        {t('imageRemove')}
+      </Button>
+    </figure>)}
+  </section>
 }
 
 function ImageModel({ value, suggestions, loading, disabled, t, change }: Pick<PlatformProps, 't'> & {

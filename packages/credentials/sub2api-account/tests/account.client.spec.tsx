@@ -14,7 +14,7 @@ afterEach(cleanup)
 const initial: AccountView = {
   productName: '歪比巴卜', platformOrigin: 'https://www.waibibabo.com', status: 'signed-out',
   authorizationUrl: null, profile: null, groups: [], selectedGroup: null, models: [], modelProtocols: [],
-  modelLimitOverrides: {}, balanceStale: false,
+  modelLimitOverrides: {}, balanceStale: false, imageUploadLimits: { maxCount: 16, maxBytes: 20 * 1024 * 1024 },
   modelLimits: { contextWindow: 262144, maxInputTokens: 229376, maxOutputTokens: 32768 }, usage: null, error: null,
 }
 

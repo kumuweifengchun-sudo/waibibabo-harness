@@ -120,6 +120,7 @@ export class Sub2apiAccount extends TypertRemoteService {
     this.http = this.accountClient()
     this.view = { productName: this.options.productName, platformOrigin: this.issuer, connection: this.connectionView(), status: 'signed-out', authorizationUrl: null,
       profile: null, groups: [], selectedGroup: null, models: [], modelProtocols: [],
+      imageUploadLimits: { maxCount: this.options.imageReferenceMaxCount, maxBytes: this.options.imageReferenceLimitBytes },
       modelLimits: this.defaultModelLimits, modelLimitOverrides: {}, balanceStale: false, usage: null, usageError: null, error: null }
     this.responses = new ResponsesTransport(this.options, this.lifetime.signal)
     this.adapter = new PiAiAdapter({
@@ -738,7 +739,7 @@ export class Sub2apiAccount extends TypertRemoteService {
   }
 
   /** Generate images through one authorized group without changing the conversation model.
-   * @param input - Explicit user prompt and image options.
+   * @param input - Explicit user prompt, image options and optional reference files for image editing.
    * @param signal - User cancellation; cancellation does not reverse possible upstream billing.
    * @returns image previews or an explicit failure, with no automatic request replay.
    */
@@ -746,12 +747,12 @@ export class Sub2apiAccount extends TypertRemoteService {
   generateImages(input: ImageRequest, signal?: AbortSignal): Promise<PlatformResult<ImageResult>> {
     return this.feature(async () => {
       if (this.imageCreating) throw new AccountError('busy')
-      const body = imageRequest(input)
+      const request = imageRequest(input, this.view.imageUploadLimits)
       if (!this.view.groups.some(group => group.id === input.groupId && group.imageGeneration)) throw new AccountError('unavailable')
       this.imageCreating = true
       try {
         const { client: gateway } = await this.gatewayRoute(input.groupId)
-        const data = await gateway.request('/v1/images/generations', { body, token: await this.key(input.groupId),
+        const data = await gateway.request(request.path, { body: request.body, token: await this.key(input.groupId),
           timeoutMs: this.options.imageTimeoutMs, maxBytes: this.options.imageResponseLimitBytes,
           ...signal === undefined ? {} : { signal } })
         return imageResult(data)

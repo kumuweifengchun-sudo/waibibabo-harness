@@ -14,6 +14,12 @@ export type InvoiceId = Branded<'Sub2apiInvoiceId'>
 export type InvoiceFileId = Branded<'Sub2apiInvoiceFileId'>
 /** Native image output identity within one generation result. */
 export type ImageOutputId = Branded<'Sub2apiImageOutputId'>
+/** Client-generated identity retained while a reference remains in the image draft. */
+export type ImageReferenceId = Branded<'Sub2apiImageReferenceId'>
+/** User-selected reference bytes, without a local filesystem path. */
+export interface ImageReference extends PlatformFile { readonly id: ImageReferenceId }
+/** Host-configured bounds applied to all reference images in one request. */
+export interface ImageUploadLimits { readonly maxCount: number; readonly maxBytes: number }
 /** Stable invoice submission idempotency key. */
 export type InvoiceRequestKey = Branded<'Sub2apiInvoiceRequestKey'>
 /** One native operation's explicit success or localized failure. */
@@ -41,6 +47,8 @@ export interface ImageRequest {
   readonly prompt: string
   readonly count: number
   readonly size: string
+  /** Omitted or empty references select text-to-image generation. */
+  readonly references?: readonly ImageReference[]
 }
 /** Validated image preview; only HTTP(S) image URLs or bounded image data URLs. */
 export interface GeneratedImage { readonly id: ImageOutputId; readonly source: string; readonly revisedPrompt: string | null }

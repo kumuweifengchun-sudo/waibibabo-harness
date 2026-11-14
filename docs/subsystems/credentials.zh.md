@@ -8,7 +8,7 @@
 
 ## 标识
 
-桌面提供方的 `PlatformResult<T>` 返回用于展示的值或账号错误类别。`GatewayId`、`PaymentOrderId`、`SubscriptionPlanId`、`InvoiceId`、`InvoiceFileId`、`ImageOutputId` 与 `InvoiceRequestKey` 是不同的品牌字符串。`GatewayView` 包含管理员发布的推理源站和已保存的选择；账号请求始终使用配置的 OAuth 源站。`ImageRequest` 独立于对话分组选择已授权的生图分组，`ImageResult` 返回有大小上限的图片地址或字节。`CheckoutView`、`OrderRequest`、`PaymentLaunch`、`PaymentOrder`、`OrderPage` 和 `SubscriptionView` 表达平台管理的价格、支付目标、订单与当前订阅。`InvoiceRequest` 携带申请字段、凭证、编辑版本和稳定重试键；`InvoiceView`、`InvoicePage`、`InvoiceQuote` 与 `PlatformFile` 暴露本人申请、金额和已验证的附件。`PlatformPageQuery` 不接受用户 ID。结果未知的写入操作不会自动重试。
+桌面提供方的 `PlatformResult<T>` 返回用于展示的值或账号错误类别。`GatewayId`、`PaymentOrderId`、`SubscriptionPlanId`、`InvoiceId`、`InvoiceFileId`、`ImageOutputId`、`ImageReferenceId` 与 `InvoiceRequestKey` 是不同的品牌字符串。`GatewayView` 包含管理员发布的推理源站和已保存的选择；账号请求始终使用配置的 OAuth 源站。`ImageRequest` 独立于对话分组选择已授权的生图分组，可携带 `ImageReference` 文件用于图片编辑；`ImageResult` 返回有大小上限的图片地址或字节。`AccountView.imageUploadLimits` 提供 Host 配置的 `ImageUploadLimits`，限定参考图数量与解码后的总字节数。`CheckoutView`、`OrderRequest`、`PaymentLaunch`、`PaymentOrder`、`OrderPage` 和 `SubscriptionView` 表达平台管理的价格、支付目标、订单与当前订阅。`InvoiceRequest` 携带申请字段、凭证、编辑版本和稳定重试键；`InvoiceView`、`InvoicePage`、`InvoiceQuote` 与 `PlatformFile` 暴露本人申请、金额和已验证的附件。`PlatformPageQuery` 不接受用户 ID。结果未知的写入操作不会自动重试。
 
 [Sub2API 账号提供方](../../packages/credentials/sub2api-account/README.md) 管理桌面平台登录和分组推理密钥租约。`Sub2apiGroupId` 与 `Sub2apiUserId` 是带品牌的字符串标识。用于展示的 `AccountView` 包含登录进度、账号资料、可用分组、选定模型、用量和本地化错误类别；令牌保留在 Host 凭据存储中。
 
@@ -482,7 +482,7 @@ Owns account credentials, browser attempts and the model routes they authorize.
 @Remote getImageModels(groupId: Sub2apiGroupId, signal?: AbortSignal): Promise<PlatformResult<readonly string[]>>
 
 /** Generate images through one authorized group without changing the conversation model.
- * @param input - Explicit user prompt and image options.
+ * @param input - Explicit user prompt, image options and optional reference files for image editing.
  * @param signal - User cancellation; cancellation does not reverse possible upstream billing.
  * @returns image previews or an explicit failure, with no automatic request replay.
  */

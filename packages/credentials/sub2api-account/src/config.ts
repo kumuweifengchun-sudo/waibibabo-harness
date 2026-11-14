@@ -34,6 +34,10 @@ export interface Config {
   invoiceTimeoutMs?: number
   /** Maximum image gateway JSON body, including base64 output. */
   imageResponseLimitBytes?: number
+  /** Maximum combined decoded reference-image bytes per request. */
+  imageReferenceLimitBytes?: number
+  /** Maximum number of reference images per request. */
+  imageReferenceMaxCount?: number
   /** Absolute duration of a sign-in attempt, in milliseconds. */
   attemptTimeoutMs?: number
   /** Refresh access tokens and inference leases before this remaining lifetime. */
@@ -65,6 +69,8 @@ export const Config = z.object({
   imageTimeoutMs: z.natural().min(1000).default(600000),
   invoiceTimeoutMs: z.natural().min(1000).default(300000),
   imageResponseLimitBytes: z.natural().min(1024).default(128 * 1024 * 1024),
+  imageReferenceLimitBytes: z.natural().min(1).default(20 * 1024 * 1024),
+  imageReferenceMaxCount: z.natural().min(1).default(16),
   attemptTimeoutMs: z.natural().min(1000).default(180000),
   refreshLeewayMs: z.natural().default(30000),
   protocol: z.union(['auto', 'openai-completions', 'openai-responses', 'anthropic-messages', 'google-generative-ai']).default('auto'),

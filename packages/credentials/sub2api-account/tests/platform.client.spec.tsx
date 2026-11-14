@@ -39,7 +39,7 @@ function fixture(plans: CheckoutView['plans'] = []) {
     profile: { id: '7' as Sub2apiUserId, email: 'user@example.com', name: 'Example', balance: 10 }, groups: [
       { id: '3' as Sub2apiGroupId, name: 'Standard', platform: 'openai', imageGeneration: true },
     ], selectedGroup: '3' as Sub2apiGroupId, models: ['gpt-5.1', 'gpt-image-2'],
-    modelLimitOverrides: {}, balanceStale: false,
+    modelLimitOverrides: {}, balanceStale: false, imageUploadLimits: { maxCount: 16, maxBytes: 20 * 1024 * 1024 },
     modelLimits: { contextWindow: 262144, maxInputTokens: 229376, maxOutputTokens: 32768 }, modelProtocols: [
       { model: 'gpt-5.1', choice: 'auto', effective: 'openai-responses', transport: 'sse' },
     ], usage: null, error: null }
@@ -164,6 +164,91 @@ it('submits images only on request and retains completed results across panel re
   fireEvent.click(screen.getByRole('button', { name: zh.imageDownload }))
   await waitFor(() => { expect(f.files.save).toHaveBeenCalledWith({ url: 'data:image/png;base64,iVBORw0KGgo=',
     name: 'waibibabo-image-1.png' }, 'download') })
+})
+
+function referenceFile(name = 'reference.png', type = 'image/png') {
+  return new File([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], name, { type })
+}
+
+it('uploads, previews and removes references, retaining the draft across panel remounts', async () => {
+  const f = fixture()
+  const first = render(<ImagePanel {...f.props} />)
+  await screen.findByRole('option', { name: 'gpt-image-2' })
+  const picker = screen.getByLabelText(zh.imageUpload)
+  fireEvent.change(picker, { target: { files: [referenceFile('first.png'), referenceFile('second.png', '')] } })
+  await screen.findByRole('img', { name: 'second.png' })
+  expect(screen.getByRole('img', { name: 'first.png' }).getAttribute('src')).toBe('data:image/png;base64,iVBORw0KGgo=')
+  expect(f.remote.generateImages).not.toHaveBeenCalled()
+  const region = screen.getByRole('region', { name: zh.imageReferences })
+  await expect(`${region.textContent}\n`).toMatchFileSnapshot('./expected/platform-image-references.txt')
+  fireEvent.click(screen.getByRole('button', { name: '移除参考图：first.png' }))
+  expect(screen.queryByRole('img', { name: 'first.png' })).toBeNull()
+  fireEvent.change(picker, { target: { files: [referenceFile('first.png')] } })
+  await screen.findByRole('img', { name: 'first.png' })
+  first.unmount()
+  render(<ImagePanel {...f.props} />)
+  expect(screen.getAllByRole('img')).toHaveLength(2)
+  await screen.findByRole('option', { name: 'gpt-image-2' })
+  fireEvent.change(screen.getByLabelText(zh.imageModel), { target: { value: 'gpt-image-2' } })
+  fireEvent.change(screen.getByLabelText(zh.imagePrompt), { target: { value: 'Combine both pictures' } })
+  fireEvent.click(screen.getByRole('button', { name: zh.imageGenerate }))
+  await waitFor(() => { expect(f.remote.generateImages).toHaveBeenCalledTimes(1) })
+  expect(f.remote.generateImages.mock.calls[0]?.[0]).toMatchObject({ references: [
+    { name: 'second.png', mime: 'image/png', base64: 'iVBORw0KGgo=' },
+    { name: 'first.png', mime: 'image/png', base64: 'iVBORw0KGgo=' },
+  ] })
+  await screen.findByText(zh.network)
+  expect(screen.getAllByRole('img')).toHaveLength(2)
+  await act(async () => { f.platform.reset() })
+  expect(screen.queryAllByRole('img')).toHaveLength(0)
+})
+
+it('retains existing references when a batch is invalid or exceeds the shared count or byte limit', async () => {
+  const f = fixture()
+  f.account.set({ ...f.account.getSnapshot(), view: { ...f.view, imageUploadLimits: { maxCount: 3, maxBytes: 24 } } })
+  await f.platform.injected.addImageReferences([referenceFile('kept.png')])
+  render(<ImagePanel {...f.props} />)
+  const picker = screen.getByLabelText(zh.imageUpload)
+  for (const files of [
+    [referenceFile(), new File(['<svg/>'], 'bad.svg', { type: 'image/svg+xml' })],
+    [referenceFile(), referenceFile(), referenceFile()],
+    [new File([new Uint8Array(17)], 'large.png', { type: 'image/png' })],
+    [new File([], 'empty.png', { type: 'image/png' })],
+    [referenceFile('mismatch.jpg', 'image/jpeg')],
+  ]) {
+    fireEvent.change(picker, { target: { files } })
+    await screen.findByText(zh.imageReferenceError)
+    expect(screen.getAllByRole('img')).toHaveLength(1)
+    expect(screen.getByRole('img', { name: 'kept.png' })).toBeTruthy()
+  }
+  fireEvent.change(picker, { target: { files: [referenceFile('added.png'), referenceFile('third.png')] } })
+  await screen.findByRole('img', { name: 'added.png' })
+  expect(screen.queryByText(zh.imageReferenceError)).toBeNull()
+  expect(screen.getByRole('button', { name: zh.imageUpload })).toHaveProperty('disabled', true)
+  expect(f.remote.generateImages).not.toHaveBeenCalled()
+})
+
+it('blocks generation while references are reading and aborts reads on account reset', async () => {
+  const f = fixture()
+  const read = vi.spyOn(FileReader.prototype, 'readAsDataURL').mockImplementation(() => {})
+  const abort = vi.spyOn(FileReader.prototype, 'abort')
+  f.platform.injected.updateImageDraft({ model: 'gpt-image-2', prompt: 'private reference' })
+  const first = render(<ImagePanel {...f.props} />)
+  let task: Promise<void> | undefined
+  await act(async () => { task = f.platform.injected.addImageReferences([referenceFile()]) })
+  expect(read).toHaveBeenCalledTimes(1)
+  expect(screen.getByText(zh.imageReading)).toBeTruthy()
+  expect(screen.getByRole('button', { name: zh.imageGenerate })).toHaveProperty('disabled', true)
+  first.unmount()
+  render(<ImagePanel {...f.props} />)
+  expect(screen.getByText(zh.imageReading)).toBeTruthy()
+  await f.platform.injected.generate({ groupId: '3' as Sub2apiGroupId, model: 'model', prompt: 'prompt', size: '', count: 1 })
+  expect(f.remote.generateImages).not.toHaveBeenCalled()
+  await act(async () => { f.platform.reset(); await task })
+  expect(abort).toHaveBeenCalledTimes(1)
+  expect(screen.queryByText(zh.imageReading)).toBeNull()
+  expect(f.platform.injected.hooks.platform.getSnapshot().imageDraft.references).toEqual([])
+  expect(f.platform.injected.hooks.platform.getSnapshot().errors.imageUploads).toBeNull()
 })
 
 it('shows a created order without opening payment automatically or marking it paid', async () => {

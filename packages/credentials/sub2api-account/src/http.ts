@@ -158,7 +158,7 @@ export class PlatformClient {
 
   private async fetch(path: string, options: PlatformRequestOptions): Promise<Response> {
     const url = new URL(path, this.origin)
-    if (url.origin !== this.origin || !url.pathname.startsWith('/api/v1/') && !['/v1/models', '/v1/images/generations'].includes(url.pathname)) throw new AccountError('protocol')
+    if (url.origin !== this.origin || !url.pathname.startsWith('/api/v1/') && !['/v1/models', '/v1/images/generations', '/v1/images/edits'].includes(url.pathname)) throw new AccountError('protocol')
     const headers = new Headers({ Accept: 'application/json', 'Accept-Language': 'zh-CN' })
     if (options.token !== undefined) headers.set('Authorization', `Bearer ${options.token}`)
     let body: string | FormData | undefined

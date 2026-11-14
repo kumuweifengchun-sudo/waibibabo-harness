@@ -4035,7 +4035,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       {
         signature: '@Remote generateImages(input: ImageRequest, signal?: AbortSignal): Promise<PlatformResult<ImageResult>>',
         description: 'Generate images through one authorized group without changing the conversation model.',
-        parameters: [{ name: 'input', description: 'Explicit user prompt and image options.' }, { name: 'signal', description: 'User cancellation; cancellation does not reverse possible upstream billing.' }],
+        parameters: [{ name: 'input', description: 'Explicit user prompt, image options and optional reference files for image editing.' }, { name: 'signal', description: 'User cancellation; cancellation does not reverse possible upstream billing.' }],
         returns: 'image previews or an explicit failure, with no automatic request replay.',
       },
       {
@@ -7556,8 +7556,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type ImageOutputId = Branded<\'Sub2apiImageOutputId\'>;',
   },
   {
+    name: 'ImageReference',
+    declaration: 'export interface ImageReference extends PlatformFile {\n    readonly id: ImageReferenceId;\n}',
+  },
+  {
+    name: 'ImageReferenceId',
+    declaration: 'export type ImageReferenceId = Branded<\'Sub2apiImageReferenceId\'>;',
+  },
+  {
     name: 'ImageRequest',
-    declaration: 'export interface ImageRequest {\n    readonly groupId: Sub2apiGroupId;\n    readonly model: string;\n    readonly prompt: string;\n    readonly count: number;\n    readonly size: string;\n}',
+    declaration: 'export interface ImageRequest {\n    readonly groupId: Sub2apiGroupId;\n    readonly model: string;\n    readonly prompt: string;\n    readonly count: number;\n    readonly size: string;\n    readonly references?: readonly ImageReference[];\n}',
   },
   {
     name: 'ImageRequestTarget',

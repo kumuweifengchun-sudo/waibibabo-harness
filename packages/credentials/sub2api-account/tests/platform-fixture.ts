@@ -31,6 +31,7 @@ export async function platformFixture() {
   let failure: { path: string; status: number; reason: string } | undefined
   let paymentMode: 'url' | 'qr' | 'stripe' = 'url'
   const forms: FormData[] = []
+  const imageForms: FormData[] = []
   const json = (res: ServerResponse, data: unknown, envelope = true) => {
     res.setHeader('Content-Type', 'application/json')
     res.end(JSON.stringify(envelope ? { code: 0, data } : data))
@@ -48,6 +49,12 @@ export async function platformFixture() {
       json(res, { id: 19, group_id: body.group_id, key: `short-group-${body.group_id}`, expires_at: new Date(Date.now() + 600000).toISOString() }); return true
     }
     if (path === '/v1/images/generations') { expect(req.headers.authorization).toBe('Bearer short-group-4'); json(res, { data: [{ b64_json: pixel }] }, false); return true }
+    if (path === '/v1/images/edits') {
+      expect(req.headers.authorization).toBe('Bearer short-group-4')
+      imageForms.push(await new Request('http://local', { method: 'POST',
+        headers: { 'Content-Type': req.headers['content-type'] ?? '' }, body: new Uint8Array(raw) }).formData())
+      json(res, { data: [{ b64_json: pixel }] }, false); return true
+    }
     if (path === '/api/v1/desktop/payment/config') { json(res, { enabled: true }); return true }
     if (path === '/api/v1/desktop/payment/checkout-info') { json(res, checkoutRecord); return true }
     if (path === '/api/v1/desktop/subscriptions') {
@@ -81,7 +88,7 @@ export async function platformFixture() {
   } })
   await f.account.signInWithPassword('user@example.com', 'password')
   await f.account.selectGroup('3' as Sub2apiGroupId)
-  return { ...f, forms, setGateways: (value: typeof gateways) => { gateways = value },
+  return { ...f, forms, imageForms, setGateways: (value: typeof gateways) => { gateways = value },
     fail: (path: string, status: number, reason = 'unavailable') => { failure = { path, status, reason } }, clearFailure: () => { failure = undefined },
     paymentMode: (value: typeof paymentMode) => { paymentMode = value }, invoiceId: '11' as InvoiceId }
 }

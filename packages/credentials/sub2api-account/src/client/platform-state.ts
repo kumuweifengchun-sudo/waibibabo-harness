@@ -8,7 +8,7 @@ import type { CheckoutView, GatewayId, GatewayView, ImageRequest, ImageResult, I
 import type { AccountInjected } from './AccountSection.tsx'
 
 /** Independently serialized operations so a slow image does not block account queries. */
-export type PlatformChannel = 'gateways' | 'images' | 'imageModels' | 'billing' | 'invoices'
+export type PlatformChannel = 'gateways' | 'images' | 'imageModels' | 'imageUploads' | 'billing' | 'invoices'
 /** Per-image save feedback; native completion supplies the actual destination. */
 export interface ImageSaveState { readonly status: 'saving' | 'saved' | 'requested' | 'cancelled' | 'failed'; readonly path?: string }
 /** The image form may be empty until the user chooses an authorized group. */
@@ -51,9 +51,9 @@ export function newInvoiceDraft(email = ''): InvoiceRequest {
 
 /** @returns empty, account-independent feature state. */
 export function initialPlatformState(): PlatformState {
-  return { loading: { gateways: false, images: false, imageModels: false, billing: false, invoices: false },
-    errors: { gateways: null, images: null, imageModels: null, billing: null, invoices: null }, gateways: null,
-    imageDraft: { groupId: null, model: '', prompt: '', count: 1, size: '' }, imageResult: null,
+  return { loading: { gateways: false, images: false, imageModels: false, imageUploads: false, billing: false, invoices: false },
+    errors: { gateways: null, images: null, imageModels: null, imageUploads: null, billing: null, invoices: null }, gateways: null,
+    imageDraft: { groupId: null, model: '', prompt: '', count: 1, size: '', references: [] }, imageResult: null,
     imageModels: [], imageModelsGroup: null, imageSaves: {},
     checkout: null, subscriptions: [], orders: null, orderQuery: { page: 1, pageSize: 20, status: '' }, payment: null,
     paymentState: null, orderUncertain: false, invoices: null, invoiceQuery: { page: 1, pageSize: 20, status: '' },
@@ -73,6 +73,8 @@ export interface PlatformInjected {
   loadGateways: () => Promise<void>
   selectGateway: (id: GatewayId | null, allowInsecure: boolean) => Promise<void>
   updateImageDraft: (patch: Partial<ImageDraft>) => void
+  /** Append a validated selection atomically; failures retain the previous draft. */
+  addImageReferences: (files: readonly File[]) => Promise<void>
   loadImageModels: (group: Sub2apiGroupId) => Promise<void>
   generate: (input: ImageRequest) => Promise<void>
   saveImage: (id: import('../platform-types.ts').ImageOutputId) => Promise<void>

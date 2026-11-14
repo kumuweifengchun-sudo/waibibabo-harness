@@ -1,7 +1,8 @@
 /** Display-safe account data shared by the Host and client. */
 import type { Branded } from '@deepseek-ai/dsh-brand'
 export type { GatewayId, PaymentOrderId, SubscriptionPlanId, InvoiceId, InvoiceFileId, ImageOutputId, InvoiceRequestKey, PlatformResult,
-  GatewayEndpoint, GatewayView, ImageRequest, GeneratedImage, ImageResult, PaymentMethod, SubscriptionPlan,
+  GatewayEndpoint, GatewayView, ImageRequest, ImageReference, ImageReferenceId, ImageUploadLimits, GeneratedImage, ImageResult,
+  PaymentMethod, SubscriptionPlan,
   CheckoutView, OrderRequest, PaymentLaunch, PaymentOrder, OrderPage, PlatformPageQuery, SubscriptionView,
   InvoiceFile, InvoiceView, InvoicePage, InvoiceQuote, EvidenceFile, InvoiceRequest, PlatformFile } from './platform-types.ts'
 
@@ -72,6 +73,8 @@ export interface AccountView {
   readonly models: readonly string[]
   readonly modelProtocols: readonly ModelProtocolView[]
   readonly modelLimits: ModelLimits
+  /** Upload limits shared with the image form before it reads local files. */
+  readonly imageUploadLimits: import('./platform-types.ts').ImageUploadLimits
   /** Explicit allocations for models of the currently selected group; absent entries inherit modelLimits. */
   readonly modelLimitOverrides: Readonly<Record<string, ModelLimits>>
   /** Whether the last automatic balance refresh failed; retained amounts remain visible. */

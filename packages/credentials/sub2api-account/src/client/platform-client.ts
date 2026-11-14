@@ -6,6 +6,7 @@ import type {} from '@deepseek-ai/dsh-sub2api-account/remote'
 import type { InvoiceRequestKey, PlatformResult } from '../platform-types.ts'
 import type { AccountInjected } from './AccountSection.tsx'
 import { initialPlatformState, newInvoiceDraft, type PlatformChannel, type PlatformInjected, type PlatformState } from './platform-state.ts'
+import { readImageReference } from './image-reference.ts'
 
 type Outcome<T> = { readonly ok: true; readonly value: PlatformResult<T> } | { readonly ok: false }
 
@@ -88,7 +89,26 @@ export function createPlatformClient(remote: PlatformRemote, account: AccountInj
         })
       }
     },
-    updateImageDraft: (patch) => { publish({ imageDraft: { ...state.imageDraft, ...patch } }) },
+    updateImageDraft: (patch) => {
+      if (state.loading.images || state.loading.imageUploads && patch.references !== undefined) return
+      publish({ imageDraft: { ...state.imageDraft, ...patch } })
+    },
+    addImageReferences: async (selected) => {
+      const limits = account.hooks.account.getSnapshot().view?.imageUploadLimits
+      if (state.loading.images || selected.length === 0 || limits === undefined) return
+      await run('imageUploads', async (signal) => {
+        const previous = state.imageDraft.references ?? []
+        const previousBytes = previous.reduce((total, image) => total + image.base64.length / 4 * 3
+          - (image.base64.endsWith('==') ? 2 : image.base64.endsWith('=') ? 1 : 0), 0)
+        if (previous.length + selected.length > limits.maxCount
+          || previousBytes + selected.reduce((total, file) => total + file.size, 0) > limits.maxBytes
+          || selected.some(file => file.size === 0 || file.name.length === 0 || file.name.length > 255)) {
+          return { ok: true, value: { ok: false, error: 'validation' } }
+        }
+        const added = await Promise.all(selected.map(file => readImageReference(file, signal)))
+        return { ok: true, value: { ok: true, data: [...previous, ...added] } }
+      }, (references) => { publish({ imageDraft: { ...state.imageDraft, references } }) })
+    },
     loadImageModels: async (group) => {
       flights.get('imageModels')?.abort()
       flights.delete('imageModels')
@@ -96,6 +116,7 @@ export function createPlatformClient(remote: PlatformRemote, account: AccountInj
       await run('imageModels', signal => remote.getImageModels(group, signal), (imageModels) => { publish({ imageModels }) })
     },
     generate: async (input) => {
+      if (state.loading.imageUploads || state.loading.images) return
       publish({ imageDraft: input })
       await run('images', signal => remote.generateImages(input, signal), (imageResult) => { publish({ imageResult, imageSaves: {} }) }, true)
     },
