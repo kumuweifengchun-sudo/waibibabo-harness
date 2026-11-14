@@ -1,8 +1,6 @@
-/** Composer context-occupancy meter: a ring and percentage below the card fed by the
- * `contextPressure` projection, with a click-open panel of the heuristic
- * `contextBreakdown` composition (system prompt, tools, conversation).
- * Renders nothing until a provider reports both pressure and a route
- * capacity. */
+/** Composer context occupancy from projected usage and live or recorded capacity,
+ * with a click-open panel of the heuristic `contextBreakdown` composition.
+ * Renders nothing until both usage and capacity are available. */
 
 import { useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -51,15 +49,18 @@ export interface ContextMeterProps {
   useProjection: UseProjection
   /** The owning bar's locale seat, passed down as a plain prop. */
   t: ComposerBarProps['t']
+  /** Live configured capacity; null hides an unavailable route, omission uses recorded capacity. */
+  contextWindow?: number | null
 }
 
-export function ContextMeter({ useProjection, t }: ContextMeterProps) {
+export function ContextMeter({ useProjection, t, contextWindow }: ContextMeterProps) {
   const pressure = useProjection('contextPressure')
   const breakdown = useProjection('contextBreakdown')
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLSpanElement | null>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
-  const context = contextOccupancy(pressure)
+  const context = contextWindow === null ? null
+    : contextOccupancy(contextWindow === undefined ? pressure : { ...pressure, contextWindow })
   const available = context !== null
   const anchorName = `--dsh-context-${useId().replaceAll(':', '')}`
   useDismissOnOutsidePointer(rootRef, open && available, setOpen, panelRef)

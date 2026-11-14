@@ -1,6 +1,7 @@
 /** Model budgets reach every platform route and survive credential reloads. */
 import { expect, it } from 'vitest'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
+import { SessionId } from '@deepseek-ai/dsh-session'
 import type { Sub2apiGroupId } from '../src/types.ts'
 import { accountFixture } from './account-fixture.ts'
 
@@ -20,6 +21,38 @@ it('uses the 256K context and explicit 32K request output default for every mode
   }
   expect(f.requests.find(request => request.path === '/v1/responses')?.body.max_output_tokens).toBe(32768)
   expect(f.requests.find(request => request.path === '/v1/messages')?.body.max_tokens).toBe(32768)
+})
+
+it('updates budgets for the same session while preserving an already prepared call', async () => {
+  const f = await accountFixture({ protocol: 'openai-responses', models: ['gpt-5.1'], responsesTransport: 'sse' })
+  await f.account.signInWithPassword('user@example.com', 'password')
+  const route = { provider: 'sub2api-u7-g3', model: 'gpt-5.1' }
+  const sessionId = SessionId('model-limits-update')
+  const first = await f.context.llm.prepareCall(route)
+  const dispatch = async (prepared: typeof first) => {
+    const finishes: string[] = []
+    for await (const chunk of prepared.stream({ ...prepared.config, sessionId, messages: [createUserMessage({
+      source: { kind: 'user' }, content: [{ type: 'text', text: 'Hello.' }],
+    })] })) if (chunk.type === 'finish') finishes.push(chunk.reason.kind)
+    expect(finishes).toEqual(['stop'])
+  }
+  expect(first.context).toEqual({ contextWindow: 262144 })
+  expect(first.config.maxTokens).toBe(32768)
+  await dispatch(first)
+  const alreadyPrepared = await f.context.llm.prepareCall(route)
+
+  const limits = { contextWindow: 486400, maxInputTokens: 420864, maxOutputTokens: 65536 }
+  expect(await f.account.setModelLimits(limits)).toMatchObject({ error: null, modelLimits: limits })
+  const next = await f.context.llm.prepareCall(route)
+  expect(next.context).toEqual({ contextWindow: 486400 })
+  expect(next.config.maxTokens).toBe(65536)
+  await dispatch(next)
+
+  expect(alreadyPrepared.context).toEqual({ contextWindow: 262144 })
+  expect(alreadyPrepared.config.maxTokens).toBe(32768)
+  await dispatch(alreadyPrepared)
+  expect(f.requests.filter(request => request.path === '/v1/responses').map(request => request.body.max_output_tokens))
+    .toEqual([32768, 65536, 32768])
 })
 
 it('inherits global budgets while preserving and resetting each model override after reload', async () => {

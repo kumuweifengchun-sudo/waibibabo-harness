@@ -7,8 +7,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import { useState } from 'react'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
+import { en as commonEn, zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/index.ts'
 import type { ISession } from '@deepseek-ai/dsh-api-session-controller/client'
-import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
+import type { InjectFace, PropsRenderFactories, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
+import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import {
   RemoteError, SlotTestRuntime, usePinnedBrowserLanguages, stubConfigForm,
 } from '@deepseek-ai/dsh-client-test-runtime'
@@ -104,7 +106,38 @@ async function bench(opts?: { blank?: boolean }) {
   return runtime
 }
 
+type CapacityMeterProps = PropsRenderFactories & InjectFace<{
+  hooks: { capacity: ObservableSnapshot<number> }
+}>
+
+function CapacityMeter({ useCapacity, renderFactorySlot }: CapacityMeterProps) {
+  return renderFactorySlot('conversation.context.meter', { contextWindow: useCapacity(value => value) })
+}
+
 describe('resident composer', () => {
+  it('updates live capacity through the context slot and restores recorded capacity on disposal', async () => {
+    const runtime = await bench()
+    runtime.ctx.effect(() => runtime.ctx.locale.register('common', { en: commonEn, zh: commonZh }))
+    try {
+      await runtime.sessions.setProjection(SID, 'contextPressure', { pressureTokens: 32_000, contextWindow: 128_000 })
+      const capacity = createSnapshotStore(128_000)
+      const remove = runtime.slots.register({
+        name: 'conversation.input.context',
+        inject: () => ({ hooks: { capacity } }),
+      }, CapacityMeter)
+      const view = runtime.renderRoot()
+      fireEvent.click(view.getByRole('button', { name: '上下文已用 25%' }))
+      act(() => { capacity.set(256_000) })
+      expect(view.getByRole('dialog').textContent).toMatchInlineSnapshot('"上下文已用13%~32K / 256K"')
+      expect(view.getByRole('button', { name: '上下文已用 13%' })).toBeTruthy()
+      act(() => { remove() })
+      await runtime.flush()
+      expect(view.getByRole('button', { name: '上下文已用 25%' })).toBeTruthy()
+    } finally {
+      await runtime.dispose()
+    }
+  })
+
   it('renders the locked view state while no session exists at all', async () => {
     const runtime = await SlotTestRuntime.create()
     provideWorkspaceNavigation(runtime)

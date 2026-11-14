@@ -413,6 +413,27 @@ describe('ui-model-selection dual entry', () => {
     }
   })
 
+  it('refreshes configured capacity in an existing session on model updates', async () => {
+    const b = await bench()
+    try {
+      b.mint('existing')
+      const directory = b.ctx.modelDirectories.directoryFor(sid('existing'))
+      await directory.load()
+      for (const contextWindow of [262_144, 486_400]) {
+        b.setGroups(GROUPS.map(group => ({
+          ...group, models: group.models.map(model => ({ ...model, contextWindow })),
+        })))
+        b.remote.emit('llm/models-updated', ['deepseek-official'])
+        await directory.load()
+        expect(directory.store.getSnapshot().groups[0]?.models[0]?.contextWindow).toBe(contextWindow)
+      }
+      expect(directory.store.getSnapshot().current?.model).toBe('deepseek-v4-flash')
+      expect(b.calls.select).toBe(0)
+    } finally {
+      await b.ctx.fiber.dispose()
+    }
+  })
+
   it('retains the selected model while refreshing its catalog', async () => {
     const b = await bench()
     b.mint('s1')

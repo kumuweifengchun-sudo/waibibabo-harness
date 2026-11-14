@@ -113,6 +113,8 @@ export interface ModelCatalogModel {
   readonly name: string
   readonly description?: string
   readonly reasoning?: ModelReasoning
+  /** Current configured capacity, independent of a Session's last request. */
+  readonly contextWindow?: number
   /** Provider-authored label shown beside the name; display data only. */
   readonly badge?: LlmModelBadge
 }

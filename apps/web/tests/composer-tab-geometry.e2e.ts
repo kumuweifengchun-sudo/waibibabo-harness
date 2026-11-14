@@ -50,16 +50,17 @@ async function setMeasuredViewport(
   })
   await page.locator('[data-conversation-scroll]').evaluate(async (host) => {
     const deadline = performance.now() + 5_000
-    let previous = host.getBoundingClientRect().width
+    let previous = host.getBoundingClientRect()
     let stableFrames = 0
     while (performance.now() < deadline) {
       await new Promise<void>((resolve) => { requestAnimationFrame(() => { resolve() }) })
-      const current = host.getBoundingClientRect().width
-      stableFrames = Math.abs(current - previous) < 0.01 ? stableFrames + 1 : 0
+      const current = host.getBoundingClientRect()
+      stableFrames = Math.abs(current.width - previous.width) < 0.01
+        && Math.abs(current.height - previous.height) < 0.01 ? stableFrames + 1 : 0
       if (stableFrames >= 3) return
       previous = current
     }
-    throw new Error('conversation width did not settle after the viewport changed')
+    throw new Error('conversation size did not settle after the viewport changed')
   })
 }
 
@@ -442,6 +443,64 @@ describe('web e2e: input card position across view tabs', () => {
     expect(Math.abs(gap)).toBeLessThanOrEqual(0.5)
     expect(tripwire.pageErrors).toEqual([])
   }, 60_000)
+
+  it('keeps the composer at the floor and preserves its draft when a maximized window is restored', async () => {
+    onTestFailed(() => saveFailureShot(page, 'web-e2e-composer-window-restore'))
+    await showTab(page, 'Chat')
+    const host = page.locator('[data-conversation-scroll]')
+    const input = page.locator('[data-composer-input]').last()
+    const originalDraft = await input.textContent() ?? ''
+    const draft = 'Window resize preserves this draft and its focus. '.repeat(8).trimEnd()
+    const originalInput = await input.elementHandle()
+    if (originalInput === null) throw new Error('composer input is not mounted')
+    try {
+      await writeComposerDraft(page, input, draft)
+      for (const readingHistory of [false, true]) {
+        await host.evaluate((element, history) => {
+          element.scrollTop = history ? (element.scrollHeight - element.clientHeight) / 2 : element.scrollHeight
+        }, readingHistory)
+        for (const viewport of [
+          WIDE_VIEWPORT,
+          { width: 1100, height: 680 },
+          WIDE_VIEWPORT,
+          { width: 800, height: 600 },
+          { width: 390, height: 700 },
+          WIDE_VIEWPORT,
+        ]) {
+          await setMeasuredViewport(page, viewport, viewport.width < 1024)
+          await expect.poll(() => host.evaluate((element) => {
+            const seat = element.querySelector('[data-composer-seat]')
+            if (seat === null) throw new Error('composer seat is not mounted')
+            return Math.abs(element.getBoundingClientRect().top + element.clientTop
+              + element.clientHeight - seat.getBoundingClientRect().bottom)
+          }), { timeout: 10_000 }).toBeLessThanOrEqual(0.5)
+          expect(await input.textContent()).toBe(draft)
+          expect(await input.evaluate((element, original) => element === original, originalInput)).toBe(true)
+          expect(await input.evaluate(element => document.activeElement === element)).toBe(true)
+        }
+      }
+      const seat = host.locator(':scope > [data-composer-seat]')
+      const chatHeight = await seat.evaluate(element => element.getBoundingClientRect().height)
+      await showTab(page, 'Trajectory')
+      await expect.poll(() => seat.evaluate((element, height) => {
+        const scroller = element.parentElement
+        if (scroller === null) throw new Error('composer scrollport is not mounted')
+        const rect = element.getBoundingClientRect()
+        return Math.max(Math.abs(rect.height - height),
+          Math.abs(scroller.getBoundingClientRect().top + scroller.clientTop + scroller.clientHeight - rect.bottom))
+      }, chatHeight)).toBeLessThanOrEqual(0.5)
+      await writeComposerDraft(page, input, '')
+      await expect.poll(() => seat.evaluate(element => element.getBoundingClientRect().height))
+        .toBeLessThan(chatHeight)
+      expect(tripwire.pageErrors).toEqual([])
+    } finally {
+      await showTab(page, 'Chat')
+      await writeComposerDraft(page, input, originalDraft)
+      await setMeasuredViewport(page, WIDE_VIEWPORT, false)
+      await host.evaluate((element) => { element.scrollTop = element.scrollHeight })
+      await originalInput.dispose()
+    }
+  })
 
   it('keeps the statistics row height whether or not its readings are present', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-composer-seat-stats-row'))

@@ -428,6 +428,26 @@ describe('Web session model selection', () => {
     await ctx.fiber.dispose()
   })
 
+  it('publishes changed configured capacity independently of session history', async () => {
+    const { ctx } = await harness()
+    let contextWindow = 262_144
+    ctx.llm.registerAdapter(['capacity'], new class extends CatalogAdapter {
+      override async resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
+        return { ...await super.resolveModel(provider, model), context: { contextWindow } }
+      }
+    }('Capacity', [{ provider: 'capacity', id: 'm', name: 'Model' }]))
+    try {
+      const selection = { provider: 'capacity', model: 'm' }
+      const first = await buildModelCatalog(ctx, selection)
+      expect(first.groups.find(group => group.id === 'capacity')?.models[0]?.contextWindow).toBe(262_144)
+      contextWindow = 486_400
+      const updated = await buildModelCatalog(ctx, selection)
+      expect(updated.groups.find(group => group.id === 'capacity')?.models[0]?.contextWindow).toBe(486_400)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('preserves optional catalog metadata and string provider failures', async () => {
     const { ctx } = await harness()
     ctx.llm.registerAdapter(['plain'], new CatalogAdapter('Plain', [

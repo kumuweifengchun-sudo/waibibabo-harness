@@ -295,6 +295,18 @@
   min-width: 0;
 }
 
+@media (hover: none) {
+  .optionCopy[data-effort-description]::after {
+    content: attr(data-effort-description);
+    color: var(--dsw-alias-label-tertiary);
+    font-size: 12px;
+    line-height: 18px;
+    font-weight: 400;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
 .modelName {
   overflow: hidden;
   color: inherit;

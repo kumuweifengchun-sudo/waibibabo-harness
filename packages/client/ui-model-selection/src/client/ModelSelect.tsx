@@ -20,7 +20,9 @@
  * hands focus back to the cell that opened it. Data and submission ride the
  * same per-session ModelDirectory as the /model popup; exact-model reasoning
  * metadata and the selected effort come from the Host rather than a
- * client-owned vocabulary. A rejected selection announces through the shared
+ * client-owned vocabulary. Familiar effort ids have localized hover/focus hints
+ * and inline explanations on devices without hover; submitted ids stay unchanged.
+ * A rejected selection announces through the shared
  * transient Toast anchored to the composer card; the in-menu strip with
  * Retry remains the catalog-load surface. While the directory's pending
  * selection is unsettled, the trigger shows a spinner in place of its
@@ -37,12 +39,21 @@ import clsx from 'clsx'
 import type { ModelReasoningEffort, ModelSelection } from '@deepseek-ai/dsh-api-remotes/client'
 import {
   IconCheckOutlineRegular, IconChevronDownOutlineRegular, IconChevronRightOutlineRegular, IconCloseFillRegular,
-  IconDataOutlineRegular, IconWarningOutlineRegular, Input, isMobileDevice, rankByName, StateDot, Tag, Toast,
+  IconDataOutlineRegular, IconWarningOutlineRegular, Input, isMobileDevice, rankByName, StateDot, Tag, Toast, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ModelLabelOwner, ModelSelectInjected } from './slots.ts'
 import css from './ModelSelect.module.css'
 import { orderModelProviders } from './provider-order.ts'
+import type { ModelKey } from './locales.ts'
+
+const effortDescriptionKeys: ReadonlyMap<string, ModelKey> = new Map([
+  ['low', 'effort.description.low'],
+  ['medium', 'effort.description.medium'],
+  ['high', 'effort.description.high'],
+  ['xhigh', 'effort.description.xhigh'],
+  ['max', 'effort.description.max'],
+])
 
 /** Which pane the dropdown shows: the two-row root or one drilled-in list. */
 type Pane = 'root' | 'model' | 'effort'
@@ -52,6 +63,7 @@ interface EffortChoice {
   key: string
   effort: string | undefined
   label: string
+  description?: string | undefined
 }
 
 /**
@@ -141,11 +153,15 @@ export function ModelSelect(
       ...reasoning.defaultEffort === undefined
         ? [{ key: 'provider-default', effort: undefined, label: t('effort.providerDefault') }]
         : [],
-      ...reasoning.efforts.map((effort: ModelReasoningEffort) => ({
-        key: `effort:${effort.id}`,
-        effort: effort.id,
-        label: effort.name,
-      })),
+      ...reasoning.efforts.map((effort: ModelReasoningEffort) => {
+        const descriptionKey = effortDescriptionKeys.get(effort.id)
+        return {
+          key: `effort:${effort.id}`,
+          effort: effort.id,
+          label: effort.name,
+          description: descriptionKey === undefined ? undefined : t(descriptionKey),
+        }
+      }),
     ], [reasoning, t])
   const { pending } = state
   const busy = pending !== null
@@ -628,26 +644,29 @@ export function ModelSelect(
                 {effortChoices.length === 0
                   ? <div className={css.empty}>{t('empty.efforts')}</div>
                   : effortChoices.map(level => (
-                    <button
-                      ref={itemRef()}
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={effectiveEffort === level.effort}
-                      className={clsx(css.option, effectiveEffort === level.effort && css.selected)}
-                      key={level.key}
-                      disabled={busy}
-                      onClick={() => { chooseEffort(level.effort) }}
-                    >
-                      <span className={css.optionCopy}>
-                        <span className={css.modelName}>{level.label}</span>
-                      </span>
-                      <span className={css.check}>
-                        {pending !== null && pending.provider === state.current?.provider
-                          && pending.model === state.current.model && pending.reasoningEffort === level.effort
-                          ? <StateDot state="ongoing" />
-                          : effectiveEffort === level.effort ? <IconCheckOutlineRegular /> : null}
-                      </span>
-                    </button>
+                    <Tooltip key={level.key} label={level.description ?? ''} disabled={busy || level.description === undefined} portal>
+                      <button
+                        ref={itemRef()}
+                        type="button"
+                        role="menuitemradio"
+                        aria-label={level.label}
+                        aria-description={level.description}
+                        aria-checked={effectiveEffort === level.effort}
+                        className={clsx(css.option, effectiveEffort === level.effort && css.selected)}
+                        disabled={busy}
+                        onClick={() => { chooseEffort(level.effort) }}
+                      >
+                        <span className={css.optionCopy} data-effort-description={level.description}>
+                          <span className={css.modelName}>{level.label}</span>
+                        </span>
+                        <span className={css.check}>
+                          {pending !== null && pending.provider === state.current?.provider
+                            && pending.model === state.current.model && pending.reasoningEffort === level.effort
+                            ? <StateDot state="ongoing" />
+                            : effectiveEffort === level.effort ? <IconCheckOutlineRegular /> : null}
+                        </span>
+                      </button>
+                    </Tooltip>
                   ))}
               </div>
             </>

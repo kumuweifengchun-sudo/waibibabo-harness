@@ -198,6 +198,12 @@ export type UseConversationViews = SnapshotSelectorHook<readonly ViewTab[]>
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotFactoryMap {
+    /** Context occupancy with optional live capacity supplied by the model directory. */
+    'conversation.context.meter': {
+      scope: 'session'
+      props: { contextWindow?: number | null }
+      locale: 'conversation'
+    }
     /** Parse one original text and render its business nodes through the owned keyed Slot. */
     'conversation.user.text': {
       scope: 'session'
@@ -315,6 +321,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * because the docked composer contains them.
      */
     'conversation.composer.dock': { kind: 'list'; scope: 'session' }
+    /** Context meter beneath the composer, supplied by the model directory when available. */
+    'conversation.input.context': { kind: 'single'; scope: 'session' }
     /**
      * Compact controls at the left of the composer tool row; fixed overlays must portal to the
      * document body because the docked composer contains them.
@@ -619,7 +627,7 @@ export type ComposerBarProps =
     | 'conversation.input.permission'
     | 'conversation.input.left' | 'conversation.input.plan'
     | 'conversation.input.right' | 'conversation.input.model' | 'conversation.input.activity'
-    | 'conversation.composer.dock'
+    | 'conversation.composer.dock' | 'conversation.input.context'
   >
   & InjectFace<ComposerBarInjected>
   & PropsLocale<'conversation'>

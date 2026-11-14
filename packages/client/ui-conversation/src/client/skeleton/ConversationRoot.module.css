@@ -514,6 +514,9 @@
 .root[data-phase='active'] .composerSeat,
 .embeddedBody[data-content-phase='active'] .composerSeat {
   position: sticky;
+  /* Keep both edges at the scrollport floor as resizing clamps its scroll
+     position. The shared observer includes docks and composer takeovers. */
+  top: calc(100% - var(--dsh-composer-height, 152px));
   bottom: 0;
   /* Takes the scroll body's free space whenever the transcript is shorter than
      the scrollport, so the seat rests at the floor even when no View fills the
@@ -575,6 +578,7 @@
 
 .scrollBody:has([data-conversation-composer-overlay]) > .composerSeat {
   position: absolute;
+  top: auto;
   /* Chat's seat rides this box's content box, which its own scrolling shortens
      by the bar's width; the overlay seat is against the padding box, so it
      must give back the same width to keep the input card in place across

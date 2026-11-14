@@ -207,7 +207,7 @@ describe('ModelSelect catalog badges', () => {
 })
 
 describe('ModelSelect reasoning effort', () => {
-  it('renders effort names without descriptions and submits the effort as part of the session selection', async () => {
+  it('keeps effort names compact and submits the effort id as part of the session selection', async () => {
     const directory = createSnapshotStore<ModelDirectoryState>(state())
     const select = vi.fn(async (selection: ModelSelection) => {
       directory.set(state({ current: selection }))
@@ -241,6 +241,52 @@ describe('ModelSelect reasoning effort', () => {
       expect(trigger.getAttribute('aria-label')).toBe('选择模型，当前 DeepSeek-V4-Flash，推理等级 Max')
       expect(document.activeElement).toBe(trigger)
     })
+  })
+
+  it('explains the five familiar effort ids on hover without changing provider labels or selection', () => {
+    const hints = [
+      ['low', '无需动脑的小问题'],
+      ['medium', '问题不大'],
+      ['high', '认真一点'],
+      ['xhigh', '这事儿很重要，认真做'],
+      ['max', '用尽你的毕生所学，完成这个任务'],
+    ] as const
+    const directory = createSnapshotStore(state({
+      current: { provider: 'provider', model: 'model' },
+      groups: [{ id: 'provider', name: 'Provider', models: [{
+        id: 'model', name: 'Model', reasoning: {
+          efforts: [...hints.map(([id]) => ({ id, name: `Provider ${id}` })), { id: 'custom', name: 'Custom' }],
+        },
+      }] }],
+    }))
+    const select = vi.fn()
+    render(<ModelSelect renderSlot={renderLabel} locked={false} available directory={directory}
+      load={vi.fn()} resolveText={resolveText} select={select} t={t} />)
+    fireEvent.click(screen.getByRole('button', { name: /选择模型，当前 Model/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /推理等级/ }))
+    for (const [id, description] of hints) {
+      const row = screen.getByRole('menuitemradio', { name: `Provider ${id}` })
+      expect(row.getAttribute('aria-description')).toBe(description)
+      expect(row.querySelector('[data-effort-description]')?.getAttribute('data-effort-description')).toBe(description)
+      fireEvent.pointerEnter(row)
+      const tooltip = screen.getByRole('tooltip')
+      expect(tooltip.textContent).toBe(description)
+      expect(tooltip.parentElement).toBe(document.body)
+      fireEvent.pointerLeave(row)
+      expect(screen.queryByRole('tooltip')).toBeNull()
+    }
+    for (const name of ['Default', 'Custom']) {
+      const row = screen.getByRole('menuitemradio', { name })
+      expect(row.hasAttribute('aria-description')).toBe(false)
+      fireEvent.pointerEnter(row)
+      expect(screen.queryByRole('tooltip')).toBeNull()
+      fireEvent.pointerLeave(row)
+    }
+    expect(select).not.toHaveBeenCalled()
+    fireEvent.keyDown(screen.getByRole('menuitemradio', { name: 'Default' }), { key: 'ArrowDown' })
+    expect(screen.getByRole('tooltip').textContent).toBe(hints[0][1])
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' })
+    expect(screen.queryByRole('tooltip')).toBeNull()
   })
 
   it('offers provider default only when the adapter does not configure a model default', () => {

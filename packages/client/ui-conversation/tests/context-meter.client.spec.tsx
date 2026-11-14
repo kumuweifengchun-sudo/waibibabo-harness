@@ -39,6 +39,20 @@ describe('ContextMeter', () => {
     expect(contextOccupancy({ pressureTokens: 300_000, contextWindow: 128_000 })?.percent).toBe(100)
   })
 
+  it('updates an existing session meter from live capacity without rewriting its recorded usage', () => {
+    const recorded = { pressureTokens: 32_000, projectedTokens: 16_000, contextWindow: 128_000 }
+    const useProjection = projections({ contextPressure: recorded })
+    const view = render(<ContextMeter useProjection={useProjection} t={t} contextWindow={128_000} />)
+    fireEvent.click(view.getByRole('button', { name: '上下文已用 13%' }))
+    view.rerender(<ContextMeter useProjection={useProjection} t={t} contextWindow={256_000} />)
+    expect(view.getByRole('button', { name: '上下文已用 6%' })).toBeTruthy()
+    expect(view.getByRole('dialog').textContent).toContain('~16K / 256K')
+    expect(recorded.contextWindow).toBe(128_000)
+    view.rerender(<ContextMeter useProjection={useProjection} t={t} contextWindow={null} />)
+    expect(view.queryByRole('button')).toBeNull()
+    expect(view.queryByRole('dialog')).toBeNull()
+  })
+
   it('renders nothing until both pressure and capacity are known', () => {
     expect(meter({}).container.textContent).toBe('')
     expect(meter({ contextPressure: { pressureTokens: 32_000 } }).container.textContent).toBe('')
