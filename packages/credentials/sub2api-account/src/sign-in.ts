@@ -1,4 +1,4 @@
-/** One bounded PKCE attempt and its loopback callback registration. */
+/** One bounded PKCE attempt and its listener-scoped loopback callback. */
 import { createHash, randomBytes } from 'node:crypto'
 import { hostname } from 'node:os'
 import type { Context } from '@deepseek-ai/cordis'
@@ -29,6 +29,7 @@ export interface SignInAttempt {
 }
 
 /** Create a deadline-bound authorization attempt before contacting the issuer.
+ * Browser callbacks require the attempt's exact HTTP Host and URL; unrelated requests retain normal admission.
  * @param ctx - Host owning the loopback HTTP route.
  * @param http - issuer-bound HTTP client.
  * @param config - validated client identity and deadline.
@@ -86,7 +87,15 @@ export function createAttempt(ctx: Context, http: PlatformClient, config: Return
       controller.abort()
     },
   }
-  const remove = ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: callback.pathname, auth: 'anonymous', handler: async (request, response) => {
+  const remove = ctx.on('webserver/request', async (request, response, next) => {
+    let receivedOrigin: URL
+    try { receivedOrigin = new URL(`http://${request.headers.host ?? ''}`) }
+    catch (_invalidHost) { await next(); return }
+    if (receivedOrigin.href !== `${callback.origin}/`) { await next(); return }
+    let target: URL
+    try { target = new URL(request.url ?? '/', callback.origin) }
+    catch (_invalidTarget) { await next(); return }
+    if (target.origin !== callback.origin || target.pathname !== callback.pathname) { await next(); return }
     response.setHeader('Cache-Control', 'no-store')
     response.setHeader('Content-Type', 'text/html; charset=utf-8')
     response.setHeader('Referrer-Policy', 'no-referrer')
@@ -94,10 +103,10 @@ export function createAttempt(ctx: Context, http: PlatformClient, config: Return
     response.setHeader('X-Content-Type-Options', 'nosniff')
     if (request.method !== 'GET') { response.writeHead(405).end(); return }
     try {
-      await attempt.accept(new URL(request.url ?? '/', callback.origin))
+      await attempt.accept(target)
       response.writeHead(200).end(authorizationPage(config.productName, true))
     } catch { response.writeHead(400).end(authorizationPage(config.productName, false)) }
-  } }), 'sub2api-account: loopback callback')
+  })
   const timer = setTimeout(() => { if (!attempt.committing) actions.failed(attempt, 'expired') }, config.attemptTimeoutMs)
   timer.unref()
   return attempt

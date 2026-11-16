@@ -12,6 +12,7 @@ import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import * as LlmRetry from '@deepseek-ai/dsh-llm-retry'
 import WebServer from '@deepseek-ai/dsh-host-webserver'
+import * as Connection from '@deepseek-ai/dsh-client-connection'
 import { LocalCredentialProvider } from '@deepseek-ai/dsh-credentials-local'
 import Account from '../src/index.ts'
 import type { ModelProtocolChoice } from '../src/types.ts'
@@ -228,6 +229,7 @@ export async function accountFixture(options: {
   await writeFile(configPath, JSON.stringify([
     { id: 'credentials', name: 'cordis:test-credentials', config: { path: join(home, 'credentials.yaml'), watch: false } },
     { id: 'web', name: 'cordis:test-web', config: { host: '127.0.0.1', port: 0 } },
+    { id: 'connection', name: 'cordis:test-connection' },
     { id: 'llm', name: options.agentLoop ? 'cordis:test-agent-dependencies' : 'cordis:test-llm' },
     { id: 'account', name: 'cordis:test-account', config: { platformOrigin: options.issuerOrigin ?? origin,
       accountOrigins: options.accountOrigins ?? (options.issuerOrigin === undefined ? [] : [origin]), productName: 'Waibibabo',
@@ -242,6 +244,7 @@ export async function accountFixture(options: {
   const context = await boot('sub2api-account-test', configPath, [], (host) => {
     host.loader.builtins['test-credentials'] = LocalCredentialProvider
     host.loader.builtins['test-web'] = WebServer
+    host.loader.builtins['test-connection'] = Connection
     host.loader.builtins['test-llm'] = LlmRuntime
     host.loader.builtins['test-agent-dependencies'] = { name: 'test-agent-dependencies', apply: mountAgentLoopTestDependencies }
     host.loader.builtins['test-retry'] = LlmRetry

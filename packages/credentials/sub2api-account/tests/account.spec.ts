@@ -1,4 +1,5 @@
 /** Account lifecycle through real Loader composition and an isolated HTTP platform. */
+import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -124,10 +125,11 @@ describe('Sub2API account through Loader', () => {
     const callback = new URL(authorization.searchParams.get('redirect_uri')!)
     callback.searchParams.set('code', 'one-use-code')
     callback.searchParams.set('state', 'wrong-state')
-    expect((await fetch(callback)).status).toBe(400)
+    const headers = { 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'navigate', 'sec-fetch-dest': 'document' }
+    expect((await fetch(callback, { headers })).status).toBe(400)
     expect((await f.account.getState()).status).toBe('signing-in')
     callback.searchParams.set('state', authorization.searchParams.get('state')!)
-    const success = await fetch(callback)
+    const success = await fetch(callback, { headers })
     expect(success.status).toBe(200)
     expect(success.headers.get('content-type')).toBe('text/html; charset=utf-8')
     expect(success.headers.get('content-security-policy')).toContain("default-src 'none'")
@@ -136,7 +138,12 @@ describe('Sub2API account through Loader', () => {
     expect(page).not.toContain(authorization.searchParams.get('state'))
     await expect(page + '\n').toMatchFileSnapshot('./expected/authorization-success.html')
     expect(await f.account.getState()).toMatchObject({ status: 'signed-in', selectedGroup: '8', models: ['relay-model'] })
-    expect((await fetch(callback)).status).toBe(404)
+    const exchanges = f.requests.filter(request => request.path.endsWith('/oauth/token'))
+    expect(exchanges).toHaveLength(1)
+    expect(exchanges[0]?.body.redirect_uri).toBe(authorization.searchParams.get('redirect_uri'))
+    expect(createHash('sha256').update(String(exchanges[0]?.body.code_verifier)).digest('base64url'))
+      .toBe(authorization.searchParams.get('code_challenge'))
+    expect((await fetch(callback, { headers })).status).toBe(404)
   })
 
   it('cancels an exchanging attempt without admitting its late token response', async () => {
