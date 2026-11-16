@@ -41,7 +41,7 @@ kind: "package-bundle"
 
 Host 插件通过必需的运行上下文注入[默认验证策略](src/index.ts)，不依赖用户工作区的规则文件。普通预设、关闭可选上下文的 Minimal 预设及继承该组合的子代理均接收策略：极低风险修改可以跳过自动化测试，局部功能只验证相关范围，大范围检查须由用户要求或同意；缺少环境时报告缺口，不为小任务自动安装测试依赖。该策略是模型行为指导，不是命令拦截器，不放宽安全要求，也不取消用户明确要求的验收。产品更新后随新请求的上下文生效；卸载插件撤销贡献。
 
-[配置补丁](cordis.patch.yml) 禁用官方账号登录、对应的模型路由与账号界面、官方品牌装饰，以及上游产品遥测。补丁挂载产品品牌与 Sub2API 账号提供方，并关闭独立 API 密钥引导弹窗。基础层和 Web 层继续提供本地工具、会话存储和 Skills。[共享产品配置](../../llm/llm/src/waibibabo-product.json) 统一管理产品名称、简称、独立版本、应用标识、主目录和更新策略；界面与 `wss/<version>` 请求头使用同一版本。源码工具通过 [product.ts](src/product.ts) 读取配置，构建时将其值内联到桌面外壳和品牌组件；共享 JSON 的编译副本以 `lib/types/waibibabo-product.json` 随 LLM 包发布。
+[配置补丁](cordis.patch.yml) 禁用官方账号登录、对应的模型路由、账号界面及依赖该界面的账号通知、官方品牌装饰，以及上游产品遥测。补丁挂载产品品牌与 Sub2API 账号提供方，并关闭独立 API 密钥引导弹窗。基础层和 Web 层继续提供本地工具、会话存储和 Skills。[共享产品配置](../../llm/llm/src/waibibabo-product.json) 统一管理产品名称、简称、独立版本、应用标识、主目录和更新策略；界面与 `wss/<version>` 请求头使用同一版本。源码工具通过 [product.ts](src/product.ts) 读取配置，构建时将其值内联到桌面外壳和品牌组件；共享 JSON 的编译副本以 `lib/types/waibibabo-product.json` 随 LLM 包发布。
 
 </details>
 
