@@ -132,7 +132,7 @@ The [unsigned GitHub-hosted workflow](../../../.github/workflows/macos-package-h
 
 1. Select **Package Desktop · macOS · GitHub hosted (unsigned)** in Actions and choose the source branch under **Use workflow from**.
 2. Choose `architecture=all` for both Apple Silicon and Intel, or select `arm64` or `x64`. Each architecture uses a separate native GitHub runner. `version_mode=build-number` appends the UTC date, run number and attempt to the Waibibabo product version; `follow-dsh` selects that product version, and `manual` requires a matching `build_version`.
-3. Run the workflow. After a successful build, download `waibibabo-macos-<arch>-<version>-unsigned` from its **Artifacts**. It contains the DMG, application ZIP, and `SHA256SUMS.txt`; retain the packaged archives to preserve macOS file metadata. Installers and available packaging logs expire after 14 days.
+3. Run the workflow. After a successful build, download `waibibabo-macos-<arch>-<version>-unsigned` from its **Artifacts**. It contains the DMG and `SHA256SUMS.txt`; retain the disk image to preserve macOS file metadata. Installers and available packaging logs expire after 14 days.
 
 These packages are unsigned and not notarized, so macOS may block downloaded copies. Use them for internal testing. This workflow does not publish GitHub releases, upload to the existing release service, or produce automatic-update feeds. Use the [self-hosted signing flow](#macos-actions) when preparing a signed release; packaging success does not establish installation or feature acceptance on a Mac.
 

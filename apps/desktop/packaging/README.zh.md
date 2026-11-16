@@ -132,7 +132,7 @@ runner 的受监督启动和恢复见 [Windows runner 机器准备](../windows-s
 
 1. 在 Actions 中选择 **Package Desktop · macOS · GitHub hosted (unsigned)**，在 **Use workflow from** 中选择源码分支。
 2. 选择 `architecture=all` 同时构建 Apple Silicon 和 Intel，或单独选择 `arm64`、`x64`。各架构使用独立的同架构 GitHub runner。`version_mode=build-number` 在歪比巴卜产品版本后追加 UTC 日期、运行编号和尝试次数；`follow-dsh` 使用该产品版本，`manual` 要求填写匹配的 `build_version`。
-3. 运行工作流。成功后从运行页的 **Artifacts** 下载 `waibibabo-macos-<arch>-<version>-unsigned`。其中包含 DMG、应用 ZIP 和 `SHA256SUMS.txt`；保留打包归档以保存 macOS 文件元数据。安装包和可用的打包日志保留 14 天。
+3. 运行工作流。成功后从运行页的 **Artifacts** 下载 `waibibabo-macos-<arch>-<version>-unsigned`。其中包含 DMG 和 `SHA256SUMS.txt`；保留磁盘映像以保存 macOS 文件元数据。安装包和可用的打包日志保留 14 天。
 
 这些安装包未签名、未公证，macOS 可能拦截下载副本，仅用于内部测试。此工作流不发布 GitHub release、不上传现有发布服务，也不生成自动更新源。准备签名发布时使用[自托管签名流程](#macos-actions)；打包成功不代表已通过 Mac 安装或功能验收。
 

@@ -83,7 +83,7 @@ jobs:
 
       - name: Record installer checksums
         working-directory: apps/desktop/.desktop-build/targets/mac-${{ matrix.arch }}/unsigned-artifacts
-        run: shasum -a 256 ./*.dmg ./*.zip > SHA256SUMS.txt
+        run: shasum -a 256 ./*.dmg > SHA256SUMS.txt
 
       # Upload packaged archives; uploading the expanded .app would lose Unix file metadata.
       - name: Upload unsigned installers
@@ -92,7 +92,6 @@ jobs:
           name: waibibabo-macos-${{ matrix.arch }}-${{ steps.settings.outputs.version }}-unsigned
           path: |
             apps/desktop/.desktop-build/targets/mac-${{ matrix.arch }}/unsigned-artifacts/*.dmg
-            apps/desktop/.desktop-build/targets/mac-${{ matrix.arch }}/unsigned-artifacts/*.zip
             apps/desktop/.desktop-build/targets/mac-${{ matrix.arch }}/unsigned-artifacts/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 14
