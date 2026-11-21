@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { Button, Input, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { EvidenceFile } from '../platform-types.ts'
 import type { AccountKey } from './locales.ts'
-import { PlatformLogin, PlatformNotice, PlatformPagination, type PlatformProps } from './PlatformCommon.tsx'
+import { PlatformHelp, PlatformLogin, PlatformNotice, PlatformPagination, PlatformPanel, type PlatformProps } from './PlatformCommon.tsx'
 import css from './Platform.module.css'
 
 const states: Readonly<Record<string, AccountKey>> = { pending: 'invoicePending', issued: 'invoiceIssued', voided: 'invoiceVoided',
@@ -55,63 +55,82 @@ function InvoiceContent(props: PlatformProps) {
     finally { setFileBusy(false) }
   }
   return <section className={css.section}>
-    <div className={css.header}><h2>{t('invoiceTitle')}</h2><Button variant="outline" disabled={busy} onClick={() => { void loadInvoices() }}>{t('invoiceRefresh')}</Button></div>
-    <p className={css.muted}>{t('invoiceDescription')}</p>
-    <div><Button variant="primary" disabled={busy} onClick={() => { void props.openInvoice(null) }}>{t('invoiceApply')}</Button></div>
-    {!state.invoiceOpen && <PlatformNotice t={t} loading={state.loading.invoices} error={state.errors.invoices} />}
-    {state.invoiceSaved && <p role="status">{t('invoiceSaved')}</p>}
-    <label className={css.form}>{t('billingStatus')}<select value={state.invoiceQuery.status} disabled={busy}
-      onChange={(event) => { void loadInvoices({ ...state.invoiceQuery, page: 1, status: event.target.value }) }}>
-      <option value="">{t('billingAll')}</option>{['pending', 'issued', 'voided'].map(status => <option key={status} value={status}>{label(status)}</option>)}
-    </select></label>
-    {state.invoices !== null && (state.invoices.items.length === 0 ? <p className={css.muted}>{t('invoiceEmpty')}</p> : <div className={css.table}>
-      <table><thead><tr><th>{t('invoiceHeading')}</th><th>{t('invoiceAmount')}</th><th>{t('billingStatus')}</th><th>{t('invoiceDelivery')}</th><th>{t('usageDetails')}</th></tr></thead>
-        <tbody>{state.invoices.items.map(invoice => <tr key={invoice.id}><td>{invoice.title}<small>#{invoice.id}</small></td>
-          <td>{money(invoice.amountCents)}</td><td>{label(invoice.status)}</td><td>{label(invoice.emailStatus)}</td>
-          <td><Button variant="ghost" disabled={busy} onClick={() => { void props.openInvoice(invoice.id) }}>{t('usageDetails')}</Button></td></tr>)}</tbody>
-      </table></div>)}
-    {state.invoices !== null && <PlatformPagination {...state.invoiceQuery} total={state.invoices.total} busy={busy} t={t}
-      onPage={(page) => { void loadInvoices({ ...state.invoiceQuery, page }) }} />}
+    <header className={css.header}>
+      <div className={css.titleGroup}><h2>{t('invoiceTitle')}</h2><PlatformHelp t={t} topic={t('invoiceTitle')} text={t('invoiceDescription')} /></div>
+      <Button variant="primary" disabled={busy} onClick={() => { void props.openInvoice(null) }}>{t('invoiceApply')}</Button>
+    </header>
+    <PlatformPanel title={t('invoiceHistory')} actions={<div className={css.actions}>
+      <label className={css.inlineField}>{t('billingStatus')}<select value={state.invoiceQuery.status} disabled={busy}
+        onChange={(event) => { void loadInvoices({ ...state.invoiceQuery, page: 1, status: event.target.value }) }}>
+        <option value="">{t('billingAll')}</option>{['pending', 'issued', 'voided'].map(status => <option key={status} value={status}>{label(status)}</option>)}
+      </select></label>
+      <Button variant="outline" size="sm" disabled={busy} onClick={() => { void loadInvoices() }}>{t('invoiceRefresh')}</Button>
+    </div>}>
+      {!state.invoiceOpen && <PlatformNotice t={t} loading={state.loading.invoices} error={state.errors.invoices} />}
+      {state.invoiceSaved && <p role="status">{t('invoiceSaved')}</p>}
+      {state.invoices !== null && (state.invoices.items.length === 0 ? <p className={css.muted}>{t('invoiceEmpty')}</p> : <div className={css.table}>
+        <table aria-label={t('invoiceHistory')}><thead><tr><th>{t('invoiceHeading')}</th><th>{t('invoiceAmount')}</th><th>{t('billingStatus')}</th><th>{t('invoiceDelivery')}</th><th>{t('usageDetails')}</th></tr></thead>
+          <tbody>{state.invoices.items.map(invoice => <tr key={invoice.id}><td>{invoice.title}<small>#{invoice.id}</small></td>
+            <td>{money(invoice.amountCents)}</td><td>{label(invoice.status)}</td><td>{label(invoice.emailStatus)}</td>
+            <td><Button variant="ghost" disabled={busy} onClick={() => { void props.openInvoice(invoice.id) }}>{t('usageDetails')}</Button></td></tr>)}</tbody>
+        </table></div>)}
+      {state.invoices !== null && <PlatformPagination page={state.invoiceQuery.page} total={state.invoices.total}
+        pages={Math.ceil(state.invoices.total / state.invoiceQuery.pageSize)} busy={busy} t={t}
+        onPage={(page) => { void loadInvoices({ ...state.invoiceQuery, page }) }} />}
+    </PlatformPanel>
     <Modal open={state.invoiceOpen} title={t(current === null ? 'invoiceApply' : 'invoiceDetail')} closeLabel={t('close')}
-      onClose={() => { if (!fileBusy) props.closeInvoice() }} className={css.invoiceDialog ?? ''}>
+      onClose={() => { if (!fileBusy) props.closeInvoice() }} className={css.invoiceDialog ?? ''} contentClassName={css.scrollContent ?? ''}>
       <div className={css.section}>
         <PlatformNotice t={t} loading={busy} error={state.errors.invoices} />
         {uncertain && state.errors.invoices !== 'uncertain' && <p className={css.error} role="alert">{t('uncertain')}</p>}
-        {fileError && <p className={css.error} role="alert">{t('invoiceFileHint')}</p>}
         {current && <p>{t('billingStatus')}：{label(current.status)} · {t('invoiceDelivery')}：{label(current.emailStatus)}</p>}
         {current?.note && <p className={css.error}>{t('invoiceNote')}：{current.note}</p>}
         <form className={css.form} onSubmit={(event) => { event.preventDefault(); if (state.quote !== null) void props.submitInvoice() }}>
-          <fieldset className={css.form} disabled={busy || !editable || uncertain}>
-            <p className={css.muted}>{t('invoiceProcessing')}</p>
-            <label>{t('invoiceKind')}<select value={draft.kind} onChange={(event) => { update({ kind: event.target.value === 'company' ? 'company' : 'personal' }) }}>
-              <option value="personal">{t('invoicePersonal')}</option><option value="company">{t('invoiceCompany')}</option>
-            </select></label>
-            <label>{t('invoiceHeading')}<Input value={draft.title} required maxLength={200} onChange={(event) => { update({ title: event.target.value }) }} /></label>
-            {draft.kind === 'company' && <label>{t('invoiceTaxId')}<Input value={draft.taxId} required maxLength={64} onChange={(event) => { update({ taxId: event.target.value }) }} /></label>}
-            <div className={css.grid}><label>{t('invoicePaymentAmount')}<Input value={draft.paymentAmount} required inputMode="decimal" maxLength={14}
-              onChange={(event) => { update({ paymentAmount: event.target.value }) }} /></label>
-            <label>{t('invoiceEmail')}<Input type="email" value={draft.email} required maxLength={254} onChange={(event) => { update({ email: event.target.value }) }} /></label></div>
-            <div><Button variant="outline" disabled={!draft.paymentAmount} onClick={() => { void props.quoteInvoice() }}>{t('invoiceCalculate')}</Button></div>
-            {state.quote !== null && <dl className={css.details}><dt>{t('invoiceFee')}</dt><dd>{money(state.quote.feeCents)}</dd>
-              <dt>{t('invoiceAmount')}</dt><dd>{money(state.quote.amountCents)}</dd></dl>}
-            {editable && <><p className={css.muted}>{t('invoiceFileHint')}</p>{(['payment', 'fee_payment'] as const).map(kind => <label key={kind}>
-              {t(kind === 'payment' ? 'invoicePaymentProof' : 'invoiceFeeProof')}
-              <input type="file" accept="image/png,image/jpeg" multiple onChange={(event) => {
-                const files = Array.from(event.target.files ?? []); event.target.value = ''; void addFiles(files, kind)
-              }} />
-            </label>)}</>}
-            {draft.files.map((file, index) => <div className={css.header} key={`${file.kind}:${file.name}:${index}`}><span>{file.name} · {t(file.kind === 'payment' ? 'invoicePaymentProof' : 'invoiceFeeProof')}</span>
-              <Button variant="ghost" onClick={() => { update({ files: draft.files.filter((_, position) => position !== index) }) }}>{t('invoiceRemoveFile')}</Button></div>)}
-          </fieldset>
-          {editable && <><p className={css.muted}>{t('invoiceQuoteRequired')}</p>
-            <div><Button type="submit" variant="primary" disabled={busy || state.quote === null}>{t(uncertain ? 'invoiceRetry' : 'invoiceSubmit')}</Button></div></>}
+          <PlatformPanel title={t('invoiceInformation')} help={<PlatformHelp t={t} topic={t('invoiceInformation')} text={t('invoiceProcessing')} />}>
+            <fieldset className={css.form} aria-label={t('invoiceInformation')} disabled={busy || !editable || uncertain}>
+              <div className={css.grid}>
+                <label>{t('invoiceKind')}<select value={draft.kind} onChange={(event) => { update({ kind: event.target.value === 'company' ? 'company' : 'personal' }) }}>
+                  <option value="personal">{t('invoicePersonal')}</option><option value="company">{t('invoiceCompany')}</option>
+                </select></label>
+                <label>{t('invoiceHeading')}<Input value={draft.title} required maxLength={200} onChange={(event) => { update({ title: event.target.value }) }} /></label>
+              </div>
+              {draft.kind === 'company' && <label>{t('invoiceTaxId')}<Input value={draft.taxId} required maxLength={64} onChange={(event) => { update({ taxId: event.target.value }) }} /></label>}
+              <label>{t('invoiceEmail')}<Input type="email" value={draft.email} required maxLength={254} onChange={(event) => { update({ email: event.target.value }) }} /></label>
+            </fieldset>
+          </PlatformPanel>
+          <PlatformPanel title={t('invoiceQuote')} help={<PlatformHelp t={t} topic={t('invoiceQuote')} text={t('invoiceQuoteRequired')} />}>
+            <fieldset className={css.form} aria-label={t('invoiceQuote')} disabled={busy || !editable || uncertain}>
+              <div className={css.purchaseRow}>
+                <label>{t('invoicePaymentAmount')}<Input value={draft.paymentAmount} required inputMode="decimal" maxLength={14}
+                  onChange={(event) => { update({ paymentAmount: event.target.value }) }} /></label>
+                <Button variant="outline" disabled={!draft.paymentAmount} onClick={() => { void props.quoteInvoice() }}>{t('invoiceCalculate')}</Button>
+              </div>
+              {state.quote !== null && <dl className={css.details}><dt>{t('invoiceFee')}</dt><dd>{money(state.quote.feeCents)}</dd>
+                <dt>{t('invoiceAmount')}</dt><dd>{money(state.quote.amountCents)}</dd></dl>}
+            </fieldset>
+          </PlatformPanel>
+          {editable && <PlatformPanel title={t('invoiceProof')}
+            help={<PlatformHelp t={t} topic={t('invoiceProof')} text={t('invoiceEvidence') + '\n' + t('invoiceFileHint')} />}>
+            {fileError && <p className={css.error} role="alert">{t('invoiceFileHint')}</p>}
+            <fieldset className={css.form} aria-label={t('invoiceProof')} disabled={busy || uncertain}>
+              {(['payment', 'fee_payment'] as const).map(kind => <label key={kind}>
+                {t(kind === 'payment' ? 'invoicePaymentProof' : 'invoiceFeeProof')}
+                <input type="file" accept="image/png,image/jpeg" multiple onChange={(event) => {
+                  const files = Array.from(event.target.files ?? []); event.target.value = ''; void addFiles(files, kind)
+                }} />
+              </label>)}
+              {draft.files.map((file, index) => <div className={css.header} key={`${file.kind}:${file.name}:${index}`}><span>{file.name} · {t(file.kind === 'payment' ? 'invoicePaymentProof' : 'invoiceFeeProof')}</span>
+                <Button variant="ghost" onClick={() => { update({ files: draft.files.filter((_, position) => position !== index) }) }}>{t('invoiceRemoveFile')}</Button></div>)}
+            </fieldset>
+          </PlatformPanel>}
+          {editable && <div><Button type="submit" variant="primary" disabled={busy || state.quote === null}>{t(uncertain ? 'invoiceRetry' : 'invoiceSubmit')}</Button></div>}
         </form>
-        {current && <><h3>{t('invoiceFiles')}</h3>{current.files.map(file => <div className={css.header} key={file.id}>
+        {!!current?.files.length && <PlatformPanel title={t('invoiceFiles')}>{current.files.map(file => <div className={css.header} key={file.id}>
           <span>{file.name} · {t(file.kind === 'payment' ? 'invoicePaymentProof' : file.kind === 'fee_payment' ? 'invoiceFeeProof' : 'invoiceIssued')}</span>
           <div className={css.actions}><Button variant="outline" disabled={busy} onClick={() => { void props.downloadInvoice(current.id, file.id) }}>{t('invoiceDownload')}</Button>
             {editable && file.kind !== 'invoice' && <label className={css.check}><input type="checkbox" checked={draft.retained.includes(file.id)} disabled={busy || uncertain}
               onChange={(event) => { update({ retained: event.target.checked ? [...draft.retained, file.id] : draft.retained.filter(id => id !== file.id) }) }} />{t('invoiceRetainedFile')}</label>}</div>
-        </div>)}</>}
+        </div>)}</PlatformPanel>}
       </div>
     </Modal>
   </section>

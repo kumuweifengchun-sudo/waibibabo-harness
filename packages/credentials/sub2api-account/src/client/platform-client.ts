@@ -3,7 +3,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { randomUUID } from '@deepseek-ai/dsh-util-crypto'
 import type { FileActions } from '@deepseek-ai/dsh-client-ui-file-actions/client'
 import type {} from '@deepseek-ai/dsh-sub2api-account/remote'
-import type { InvoiceRequestKey, PlatformResult } from '../platform-types.ts'
+import type { InvoiceRequestKey, PaymentOrder, PlatformResult } from '../platform-types.ts'
 import type { AccountInjected } from './AccountSection.tsx'
 import { initialPlatformState, newInvoiceDraft, type PlatformChannel, type PlatformInjected, type PlatformState } from './platform-state.ts'
 import { readImageReference } from './image-reference.ts'
@@ -70,6 +70,25 @@ export function createPlatformClient(remote: PlatformRemote, account: AccountInj
         publish({ loading: { ...state.loading, [channel]: false } })
       }
     }
+  }
+  const applyOrder = (order: PaymentOrder) => {
+    publish({ ...(state.payment?.id === order.id ? { paymentState: order } : {}),
+      ...(state.paymentDialog !== 'current' && state.paymentDialog?.id === order.id ? { paymentDialog: order } : {}),
+      pendingCancellationChecks: state.pendingCancellationChecks.filter(id => id !== order.id),
+      orders: state.orders === null ? null : { ...state.orders,
+        items: state.orders.items.map(item => item.id === order.id ? order : item) } })
+  }
+  const updatePayment = async (request: (signal: AbortSignal) => Promise<Outcome<PaymentOrder>>, cancelling: boolean) => {
+    const version = revision
+    let reloadBilling = cancelling
+    const settled = await run('billing', request, async (order) => {
+      applyOrder(order)
+      if (order.status === 'COMPLETED') {
+        reloadBilling = true
+        await account.refresh()
+      }
+    }, cancelling)
+    if (settled && reloadBilling && version === revision) await injected.loadBilling()
   }
   const injected: PlatformInjected = {
     hooks: { account: account.hooks.account, platform: { getSnapshot: () => state, subscribe: (listener) => {
@@ -146,25 +165,48 @@ export function createPlatformClient(remote: PlatformRemote, account: AccountInj
         return { ok: true, value: { ok: true, data: {
           checkout: checkout.value.data, subscriptions: subscriptions.value.data, orders: orders.value.data,
         } } }
-      }, (data) => { publish({ ...data, orderQuery: query, orderUncertain: false,
-        paymentState: data.orders.items.find(order => order.id === state.payment?.id) ?? state.paymentState }) })
+      }, (data) => {
+        const inspected = state.paymentDialog === 'current' ? null : state.paymentDialog
+        const items = data.orders.items.map((order) => {
+          const detail = state.paymentState?.id === order.id ? state.paymentState : inspected?.id === order.id ? inspected : null
+          // A lagging history response cannot make a settled order payable again.
+          return order.status === 'PENDING' && detail && detail.status !== 'PENDING' ? detail : order
+        })
+        const listed = new Map(items.map(order => [order.id, order]))
+        publish({ ...data, orders: { ...data.orders, items }, orderQuery: query, orderUncertain: false,
+          pendingCancellationChecks: state.pendingCancellationChecks.filter((id) => {
+            const order = listed.get(id)
+            return !order || order.status === 'PENDING'
+          }),
+          paymentState: state.payment ? listed.get(state.payment.id) ?? state.paymentState : null,
+          paymentDialog: inspected ? listed.get(inspected.id) ?? inspected : state.paymentDialog })
+      })
     },
     createPayment: async (input) => {
       if (state.orderUncertain) return false
-      const succeeded = await run('billing', () => remote.createOrder(input), (payment) => { publish({ payment, paymentState: null }) }, true)
+      const succeeded = await run('billing', () => remote.createOrder(input), (payment) => {
+        publish({ payment, paymentState: null, paymentDialog: 'current' })
+      }, true)
       if (!succeeded && state.errors.billing === 'uncertain') publish({ orderUncertain: true })
       return succeeded
     },
-    refreshPayment: async (id) => {
-      const succeeded = await run('billing', () => remote.getOrder(id, true), (paymentState) => {
-        publish({ paymentState: state.payment?.id === id ? paymentState : state.paymentState,
-          orders: state.orders === null ? null : { ...state.orders,
-            items: state.orders.items.map(item => item.id === id ? paymentState : item) } })
-      })
-      if (succeeded && state.paymentState?.status === 'COMPLETED') { await account.refresh(); await injected.loadBilling() }
+    openPayment: (order) => {
+      if (state.loading.billing || (!order && !state.payment)) return
+      publish({ paymentDialog: order && order.id !== state.payment?.id ? order : 'current',
+        errors: { ...state.errors, billing: null } })
     },
+    closePayment: () => { publish({ paymentDialog: null }) },
+    refreshPayment: id => updatePayment(() => remote.getOrder(id, !state.pendingCancellationChecks.includes(id)), false),
     cancelPayment: async (id) => {
-      if (await run('billing', () => remote.cancelOrder(id), () => {}, true)) await injected.loadBilling()
+      if (state.pendingCancellationChecks.includes(id)) return
+      await updatePayment(async (signal) => {
+        publish({ pendingCancellationChecks: [...state.pendingCancellationChecks, id] })
+        const result = await remote.cancelOrder(id)
+        if (!result.ok) return { ok: false }
+        if (!result.value.ok) return { ok: true, value: result.value }
+        signal.throwIfAborted()
+        return remote.getOrder(id, false)
+      }, true)
     },
     loadInvoices: async (query = state.invoiceQuery) => {
       await run('invoices', signal => remote.getInvoices(query, signal), (invoices) => { publish({ invoices, invoiceQuery: query }) })

@@ -14,7 +14,10 @@ import { z } from 'zod'
 import { Config, platformOrigin } from './config.ts'
 import { AccountError, PlatformClient, parse, tokenResponse, type PlatformRequestOptions } from './http.ts'
 import { createAttempt, type SignInAttempt } from './sign-in.ts'
+import { RegistrationFlow, registrationOptions } from './registration.ts'
+import type { RegistrationId, RegistrationInput, RegistrationOptions } from './types.ts'
 import { modelProtocol, protocolBaseURL } from './model-protocol.ts'
+import { accountModelProvider } from './model-provider.ts'
 import { platformModelsResponse as modelsResponse, withModelCapabilities, type PlatformModelCatalog as ModelCatalog } from './model-capabilities.ts'
 import { effectiveContextWindow, modelLimitsSchema, parseModelLimits } from './model-limits.ts'
 import { usagePage, usageParameters } from './usage.ts'
@@ -103,6 +106,8 @@ export class Sub2apiAccount extends TypertRemoteService {
   private imageCreating = false
   private refreshingBalance = false
   private orderCreating = false
+  private readonly signup = new RegistrationFlow()
+  private signupBusy = false
   private view: AccountView
   private initialization: Promise<void> | undefined
 
@@ -203,7 +208,7 @@ export class Sub2apiAccount extends TypertRemoteService {
   @Remote
   setAccountOrigin(origin: string | null): Promise<AccountView> {
     return this.report(async () => {
-      if (this.attempt !== undefined || this.connectionChanging) throw new AccountError('busy')
+      if (this.attempt !== undefined || this.signupBusy || this.connectionChanging) throw new AccountError('busy')
       if (origin !== null && !this.accountOrigins.includes(origin)) throw new AccountError('account-line-unavailable')
       this.connectionChanging = true
       try {
@@ -252,8 +257,7 @@ export class Sub2apiAccount extends TypertRemoteService {
   }
 
   private provider(): string | undefined {
-    if (this.view.profile === null || this.view.selectedGroup === null) return undefined
-    return `sub2api-u${this.view.profile.id}-g${this.view.selectedGroup}`
+    return accountModelProvider(this.view)
   }
 
   private clearModels(): void {
@@ -401,7 +405,7 @@ export class Sub2apiAccount extends TypertRemoteService {
     const limits = this.session?.modelLimits ?? this.defaultModelLimits
     const inferenceOrigin = await gateway.connectionOrigin()
     const profiles = resolveProfiles({ [provider]: {
-      displayName: `${this.options.productName} · ${group?.name ?? this.view.selectedGroup}`,
+      displayName: `${this.options.productShortName || this.options.productName} · ${group?.name ?? groupId}`,
       defaultContextWindow: effectiveContextWindow(limits), defaultMaxTokens: limits.maxOutputTokens,
       models: protocols.map(({ source: model, effective }) => {
         const choices = this.session?.modelLimitOverrides?.[this.view.selectedGroup ?? '']
@@ -608,7 +612,7 @@ export class Sub2apiAccount extends TypertRemoteService {
     this.publish({ error: null })
   }
 
-  private async feature<T>(action: () => Promise<T>, mutation = false): Promise<PlatformResult<T>> {
+  private async feature<T>(action: () => Promise<T>, mutation = false, validation: AccountFailure = 'validation'): Promise<PlatformResult<T>> {
     const revision = this.revision
     try {
       await this.initialization
@@ -619,7 +623,7 @@ export class Sub2apiAccount extends TypertRemoteService {
     } catch (error) {
       const code = error instanceof AccountError ? error.code : 'network'
       return { ok: false, error: mutation && ['network', 'timeout', 'server', 'protocol'].includes(code) ? 'uncertain'
-        : code === 'credentials' ? 'validation' : code }
+        : code === 'credentials' || code === 'validation' ? validation : code }
     }
   }
 
@@ -799,7 +803,7 @@ export class Sub2apiAccount extends TypertRemoteService {
       this.orderCreating = true
       try { return await paymentLaunch(await this.authenticated('/api/v1/desktop/payment/orders', body), this.http.origin) }
       finally { this.orderCreating = false }
-    }, true)
+    }, true, 'payment-input')
   }
 
   /** Read only the current account's payment orders.
@@ -920,7 +924,7 @@ export class Sub2apiAccount extends TypertRemoteService {
   }
 
   private async prepareSignIn(): Promise<SignInAttempt> {
-    if (this.session !== undefined || this.attempt !== undefined || this.connectionChanging) throw new AccountError('busy')
+    if (this.session !== undefined || this.attempt !== undefined || this.signupBusy || this.connectionChanging) throw new AccountError('busy')
     const revision = this.revision
     const attempt = createAttempt(this.owner, this.http, this.options, {
       complete: (active, code) => this.track(this.complete(active, code)),
@@ -965,6 +969,54 @@ export class Sub2apiAccount extends TypertRemoteService {
     this.endAttempt(null)
     this.publish({ status: 'signed-in' })
     await this.report(() => this.refreshData())
+  }
+
+  private async signupOperation<T>(action: () => Promise<T>, kind: 'policy' | 'code' | 'submit'): Promise<PlatformResult<T>> {
+    await this.initialization
+    if (this.signupBusy || this.session || this.attempt || this.connectionChanging) return { ok: false, error: 'busy' }
+    if (kind !== 'policy') this.signupBusy = true
+    try { return { ok: true, data: await this.track(action()) } }
+    catch (error) {
+      const code = error instanceof AccountError ? error.code : 'network'
+      if (kind === 'submit' && ['network', 'timeout', 'protocol', 'server'].includes(code)) return { ok: false, error: 'registration-unknown' }
+      return { ok: false, error: code === 'credentials' || code === 'validation' ? 'registration-input' : code }
+    } finally { if (kind !== 'policy') this.signupBusy = false }
+  }
+
+  /** Read the platform's public registration settings.
+   * @returns Enabled signup fields, agreement links and verification requirements.
+   */
+  @Remote
+  getRegistrationOptions(): Promise<PlatformResult<RegistrationOptions>> {
+    return this.signupOperation(() => registrationOptions(this.http), 'policy')
+  }
+
+  /** Send an email verification code for the current signup attempt.
+   * @param id - Form attempt identifier, reused on resend.
+   * @param email - Email address being registered.
+   * @param code - Platform registration code.
+   * @returns platform resend delay in seconds.
+   */
+  @Remote
+  sendRegistrationCode(id: RegistrationId, email: string, code: string): Promise<PlatformResult<number>> {
+    return this.signupOperation(() => this.signup.send(this.http, id, email, code), 'code')
+  }
+
+  /** Create a platform account from the native signup form.
+   * @param input - Confirmed email registration fields.
+   * @returns Confirmation after the platform creates the account.
+   */
+  @Remote
+  registerAccount(input: RegistrationInput): Promise<PlatformResult<null>> {
+    return this.signupOperation(async () => {
+      const http = this.http
+      const refreshToken = await this.signup.submit(http, input)
+      if (refreshToken) {
+        try { await http.request('/api/v1/auth/logout', { body: { refresh_token: refreshToken } }) }
+        catch { this.ctx.logger.warn('sub2api-account: signup session revocation failed') }
+      }
+      return null
+    }, 'submit')
   }
 
   /** Start system-browser authorization with a loopback callback and PKCE.

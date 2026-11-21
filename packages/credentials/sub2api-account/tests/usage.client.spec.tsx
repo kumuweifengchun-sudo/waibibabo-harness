@@ -43,6 +43,15 @@ function fixture(signedIn = true) {
 it('queries the selected filters and pages using the last successful filter', () => {
   const f = fixture()
   expect(f.loadUsage).toHaveBeenCalledOnce()
+  expect(within(screen.getByRole('region', { name: zh.usageFilters })).getByLabelText(zh.usageModel)).toBeTruthy()
+  expect(within(screen.getByRole('region', { name: zh.usageSummary })).getByText('3.75')).toBeTruthy()
+  expect(within(screen.getByRole('region', { name: zh.usageRecords })).getByRole('table')).toBeTruthy()
+  expect(screen.queryByText(zh.usageDescription)).toBeNull()
+  const help = screen.getByRole('button', { name: '使用日志说明' })
+  fireEvent.keyDown(document, { key: 'Tab' })
+  fireEvent.focus(help)
+  expect(screen.getByRole('tooltip').textContent).toBe(zh.usageDescription)
+  fireEvent.blur(help)
   fireEvent.change(screen.getByLabelText(zh.usageModel), { target: { value: 'vendor/gpt-5.1' } })
   fireEvent.click(screen.getByRole('button', { name: zh.usageSearch }))
   expect(f.loadUsage).toHaveBeenLastCalledWith(expect.objectContaining({ model: 'vendor/gpt-5.1', page: 1 }))
@@ -59,6 +68,18 @@ it('shows available records and missing totals separately when summary loading f
   expect(screen.getByText(zh.usageStatsUnavailable)).toBeTruthy()
   expect(screen.getByText('gpt-5.1')).toBeTruthy()
   expect(screen.getByRole('button', { name: zh.usageDetails })).toBeTruthy()
+})
+
+it('keeps the record count without paging controls when the entire result fits', () => {
+  const f = fixture()
+  const state = f.usage.getSnapshot()
+  if (!state.data) throw new Error('fixture has no records')
+  const page = { ...state.data, total: 1, totalPages: 1 }
+  act(() => { f.usage.set({ ...state, data: page }) })
+  const records = within(screen.getByRole('region', { name: zh.usageRecords }))
+  expect(records.getByText('共 1 条')).toBeTruthy()
+  expect(records.queryByRole('button', { name: zh.usageNext })).toBeNull()
+  expect(records.getByRole('button', { name: zh.usageDetails })).toBeTruthy()
 })
 
 it('shows token, cost, endpoint and latency details and retains rows on query failure', async () => {

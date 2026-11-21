@@ -3,6 +3,7 @@ import type { en } from './en.ts'
 
 /** Complete Spanish copy for the common namespace. */
 export const es = {
+  'helpFor': 'Acerca de {topic}',
   'ok': 'OK',
   'cancel': 'Cancelar',
   'close': 'Cerrar',

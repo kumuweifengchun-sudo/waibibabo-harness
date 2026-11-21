@@ -3,6 +3,9 @@ import { useId, useState } from 'react'
 import { Button, Input, Modal, IconUserOutlineMedium } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { FactoryComponentPropsOf, HostObservable, InjectFace, PropsLocale, PropsRenderFactories, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { AccountConnectionView, AccountView, ModelLimits, ModelProtocolChoice, ModelTransport, Sub2apiGroupId, UsageQuery } from '../types.ts'
+import type { PlatformResult, RegistrationId, RegistrationInput, RegistrationOptions } from '../types.ts'
+import { RegistrationForm } from './RegistrationForm.tsx'
+import { PlatformHelp, PlatformPanel } from './PlatformCommon.tsx'
 import { failureKeys } from './errors.ts'
 import type { UsageState } from './usage-state.ts'
 import css from './AccountSection.module.css'
@@ -19,6 +22,9 @@ export interface ClientAccountState {
 /** Plain account actions and a framework-bound observable. */
 export interface AccountInjected {
   hooks: { account: HostObservable<ClientAccountState>; usage: HostObservable<UsageState> }
+  registrationOptions: () => Promise<PlatformResult<RegistrationOptions>>
+  sendRegistrationCode: (id: RegistrationId, email: string, code: string) => Promise<PlatformResult<number>>
+  registerAccount: (input: RegistrationInput) => Promise<PlatformResult<null>>
   signIn: (email: string, password: string) => Promise<void>
   start: () => Promise<void>
   verify: (code: string) => Promise<void>
@@ -44,16 +50,20 @@ function AccountConnection({ view, busy, t, setAccountOrigin }: Pick<SharedProps
 }) {
   const [selected, setSelected] = useState(view.selected ?? '')
   const missing = selected !== '' && !view.origins.includes(selected)
-  return <form className={css.form} onSubmit={(event) => { event.preventDefault(); void setAccountOrigin(selected || null) }}>
-    <label>{t('accountLine')}<select value={selected} disabled={busy} onChange={(event) => { setSelected(event.target.value) }}>
-      <option value="">{t('lineAuto')}</option>
-      {missing && <option value={selected} disabled>{t('accountLineUnavailable')}</option>}
-      {view.origins.map(origin => <option key={origin} value={origin}>{origin}</option>)}
-    </select></label>
-    <p className={css.muted}>{t('accountLineHint')}</p>
-    <p className={css.muted}>{t('lineActive', { value: view.active ?? t('lineUnresolved') })}</p>
-    <div><Button type="submit" variant="outline" disabled={busy || missing}>{t(selected === '' ? 'lineDetect' : 'gatewayApply')}</Button></div>
-  </form>
+  const active = t('lineActive', { value: view.active ?? t('lineUnresolved') })
+  return <PlatformPanel title={t('accountLine')} help={
+    <PlatformHelp t={t} topic={t('accountLine')} text={t('accountLineHint') + '\n' + active} />
+  }>
+    <form className={css.connection} onSubmit={(event) => { event.preventDefault(); void setAccountOrigin(selected || null) }}>
+      <select aria-label={t('accountLine')} value={selected} disabled={busy} onChange={(event) => { setSelected(event.target.value) }}>
+        <option value="">{t('lineAuto')}</option>
+        {missing && <option value={selected} disabled>{t('accountLineUnavailable')}</option>}
+        {view.origins.map(origin => <option key={origin} value={origin}>{origin}</option>)}
+      </select>
+      <Button type="submit" variant="outline" disabled={busy || missing}>{t(selected === '' ? 'lineDetect' : 'gatewayApply')}</Button>
+    </form>
+    {selected !== view.active && <p className={css.muted}>{active}</p>}
+  </PlatformPanel>
 }
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -65,6 +75,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     /** Account content reused without duplicating its branding declaration. */
     'sub2api.account.content': {
       scope: 'root'
+      props: { openBilling?: () => void }
       inject: AccountInjected
       locale: 'sub2api.account'
       children: { 'sub2api.account.brand': { kind: 'single'; scope: 'root' } }
@@ -74,7 +85,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 
 /** @param props - Account state, actions and product artwork renderer. @returns the sign-in form or account overview. */
 export function AccountContent({ t, useAccount, signIn, start, verify, cancel, refresh, signOut, setAccountOrigin,
-  renderSlot }: FactoryComponentPropsOf<'sub2api.account.content'>) {
+  openBilling, renderSlot, registrationOptions, sendRegistrationCode, registerAccount }: FactoryComponentPropsOf<'sub2api.account.content'>) {
   const snapshot = useAccount(value => value)
   const { view, busy, failed } = snapshot
   const emailId = useId()
@@ -83,6 +94,8 @@ export function AccountContent({ t, useAccount, signIn, start, verify, cancel, r
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [code, setCode] = useState('')
+  const [registering, setRegistering] = useState(false)
+  const [registered, setRegistered] = useState(false)
   const submitPassword = () => {
     const submitted = password
     setPassword('')
@@ -95,7 +108,7 @@ export function AccountContent({ t, useAccount, signIn, start, verify, cancel, r
   const signingIn = view.status === 'signing-in'
   const twoFactor = view.status === 'two-factor'
   const quota = (value: number) => value.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  return <div className={css.section}>
+  return <section className={css.section} aria-label={t('nav')}>
     <header className={css.brand}>
       {renderSlot('sub2api.account.brand', { size: 48 })}
       <div className={css.brandText}>
@@ -103,11 +116,13 @@ export function AccountContent({ t, useAccount, signIn, start, verify, cancel, r
         <a href={view.platformOrigin} target="_blank" rel="noopener noreferrer">{new URL(view.platformOrigin).host}</a>
       </div>
     </header>
-    {error !== null && <p className={css.error} role="alert">{t(error)}</p>}
-    {view.connection && <AccountConnection key={view.connection.selected ?? 'auto'} view={view.connection}
-      busy={busy || signingIn || twoFactor} t={t} setAccountOrigin={setAccountOrigin} />}
-    {!signedIn && <>
-      <p className={css.muted}>{t('description')}</p>
+    {!registering && error !== null && <p className={css.error} role="alert">{t(error)}</p>}
+    {!signedIn && registering && <RegistrationForm t={t} origin={view.platformOrigin} initialEmail={email} busy={busy}
+      registrationOptions={registrationOptions} sendRegistrationCode={sendRegistrationCode} registerAccount={registerAccount}
+      back={(address) => { setRegistering(false); if (address) { setRegistered(true); setEmail(address) } }} />}
+    {!signedIn && !registering && <PlatformPanel title={t('title')}
+      help={<PlatformHelp t={t} topic={t('title')} text={t('description') + '\n' + t('alternativeSignIn')} />}>
+      {registered && <p role="status">{t('registrationReturned')}</p>}
       {twoFactor ? <form className={css.loginForm} aria-busy={busy} onSubmit={(event) => { event.preventDefault(); const submitted = code; setCode(''); void verify(submitted) }}>
         <div className={css.field}><label htmlFor={otpId}>{t('twoFactor')}</label>
           <Input id={otpId} data-modal-autofocus inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={code} onChange={(event) =>{ setCode(event.target.value) }} disabled={busy} required /></div>
@@ -118,16 +133,22 @@ export function AccountContent({ t, useAccount, signIn, start, verify, cancel, r
         <div className={css.field}><label htmlFor={passwordId}>{t('password')}</label>
           <Input id={passwordId} type="password" autoComplete="current-password" value={password} onChange={(event) =>{ setPassword(event.target.value) }} disabled={busy || signingIn} required /></div>
         <Button type="submit" variant="primary" disabled={busy || signingIn || !email || !password}>{t(busy ? 'signingIn' : 'passwordSignIn')}</Button>
-        <div className={css.separator}>{t('alternativeSignIn')}</div>
-        <Button variant="outline" onClick={() => { void start() }} disabled={busy || signingIn}>{t('browserSignIn')}</Button>
+        <div className={css.loginAlternatives}>
+          <Button type="button" variant="outline" disabled={busy || signingIn} onClick={() => {
+            setPassword(''); setRegistered(false); setRegistering(true)
+          }}>{t('registerAccount')}</Button>
+          <Button type="button" variant="outline" onClick={() => { void start() }} disabled={busy || signingIn}>{t('browserSignIn')}</Button>
+        </div>
       </form>}
       {view.authorizationUrl !== null && <div className={css.notice}>
         <p role="status">{t('waiting')}</p>
         <a href={view.authorizationUrl} target="_blank" rel="noopener noreferrer">{t('openBrowser')}</a>
       </div>}
       {(signingIn || twoFactor) && <Button onClick={() => { void cancel() }} disabled={busy}>{t('cancel')}</Button>}
-    </>}
-    {signedIn && <>
+    </PlatformPanel>}
+    {signedIn && <PlatformPanel title={t('accountOverview')}
+      help={<PlatformHelp t={t} topic={t('accountOverview')} text={t('balanceAutoRefresh')} />}
+      actions={<Button variant="ghost" size="sm" onClick={() => { void refresh() }} disabled={busy}>{t(busy ? 'accountProcessing' : 'refresh')}</Button>}>
       {view.profile !== null && <div className={css.profile}>
         <div className={css.avatar}><IconUserOutlineMedium /></div>
         <div className={css.identity}>
@@ -142,39 +163,59 @@ export function AccountContent({ t, useAccount, signIn, start, verify, cancel, r
         <div><span>{t('todayRequests')}</span><strong>{view.usage === null ? '—' : view.usage.todayRequests.toLocaleString('zh-CN')}</strong></div>
         <div><span>{t('totalCost')}</span><strong>{view.usage === null ? '—' : quota(view.usage.totalCost)}</strong></div>
       </div>
-      <p className={css.muted} role={view.balanceStale ? 'status' : undefined}>{t(view.balanceStale ? 'balanceStale' : 'balanceAutoRefresh')}</p>
+      {view.balanceStale && <p className={css.error} role="status">{t('balanceStale')}</p>}
       {view.usageError && <p className={css.muted} role="status">{t('usageSummaryUnavailable')}</p>}
       <nav className={css.accountLinks} aria-label={t('accountActions')}>
-        <a href={view.platformOrigin + '/purchase'} target="_blank" rel="noopener noreferrer">{t('billingWebRecharge')}</a>
+        {openBilling && <Button variant="primary" onClick={openBilling}>{t('billingBuy')}</Button>}
         <a href={view.platformOrigin + '/dashboard'} target="_blank" rel="noopener noreferrer">{t('platform')}</a>
         <a href={view.platformOrigin + '/settings/desktop'} target="_blank" rel="noopener noreferrer">{t('devices')}</a>
+        <SignOutButton key={view.profile?.id} busy={busy} t={t} signOut={signOut} />
       </nav>
-      <footer className={css.accountFooter}>
-        <Button variant="outline" onClick={() => { void refresh() }} disabled={busy}>{t(busy ? 'accountProcessing' : 'refresh')}</Button>
-        <Button onClick={() => { void signOut() }} disabled={busy}>{t('signOut')}</Button>
-      </footer>
-    </>}
-  </div>
+    </PlatformPanel>}
+    {!registering && view.connection && <AccountConnection key={view.connection.selected ?? 'auto'} view={view.connection}
+      busy={busy || signingIn || twoFactor} t={t} setAccountOrigin={setAccountOrigin} />}
+  </section>
+}
+
+function SignOutButton({ busy, t, signOut }: Pick<SharedProps, 't' | 'signOut'> & { busy: boolean }) {
+  const [open, setOpen] = useState(false)
+  const close = () => { setOpen(false) }
+  return <>
+    <Button variant="primary" className={css.signOut} aria-haspopup="dialog" disabled={busy}
+      onClick={() => { setOpen(true) }}>{t('signOut')}</Button>
+    <Modal open={open} onClose={close} closeLabel={t('close')} title={t('signOutTitle')} description={t('signOutDescription')}
+      footer={<>
+        <Button variant="outline" data-modal-autofocus onClick={close}>{t('cancel')}</Button>
+        <Button variant="primary" className={css.signOut} disabled={busy}
+          onClick={() => { close(); void signOut() }}>{t('signOutConfirm')}</Button>
+      </>} />
+  </>
 }
 
 /** Account settings page props assembled by the renderer. */
 export type AccountSectionProps = PropsRuntime<'settings.section'> & PropsRenderFactories
 /** @param props - Renderer for the shared account content. @returns the account settings page. */
-export function AccountSection({ renderFactorySlot }: AccountSectionProps) { return renderFactorySlot('sub2api.account.content', {}) }
+export function AccountSection({ renderFactorySlot, selectSection }: AccountSectionProps) {
+  return renderFactorySlot('sub2api.account.content', selectSection ? { openBilling: () => { selectSection('sub2api-billing') } } : {})
+}
 
 /** @param props - sidebar owner actions and account state. @returns the platform account launcher. */
 export function AccountLauncher(props: PropsRuntime<'settings.launcher'> & SharedProps) {
-  const snapshot = props.useAccount(value => value)
-  const label = snapshot.view?.profile?.name ?? snapshot.view?.productName ?? props.t('nav')
-  const balance = snapshot.view?.profile?.balance
+  const view = props.useAccount(value => value.view)
+  const signedIn = view?.status === 'signed-in'
+  const label = signedIn ? view.profile?.name ?? view.productName : props.t('sidebarSignIn')
+  const balance = signedIn ? view.profile?.balance : undefined
   const quota = balance === undefined ? '' : props.t('sidebarQuota', { value: balance.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) })
-  const title = `${label}${quota ? ` · ${quota}` : ''} · ${props.t(snapshot.view?.balanceStale ? 'balanceStale' : 'balanceAutoRefresh')}`
-  return <Button className={css.launcher} aria-label={quota ? `${label} · ${quota}` : label} title={title} onClick={() => {
-    if (snapshot.view?.status === 'signed-in') props.openSettings()
+  const accessibleName = quota ? `${label} · ${quota}` : label
+  const title = signedIn ? `${accessibleName} · ${props.t(view.balanceStale ? 'balanceStale' : 'balanceAutoRefresh')}` : label
+  const open = () => {
+    if (signedIn) props.openSettings()
     else props.showLogin(true)
-  }} icon={<IconUserOutlineMedium />}>
+  }
+  return <Button className={css.launcher} data-sign-in={props.wide && !signedIn || undefined} aria-haspopup="dialog"
+    aria-label={accessibleName} title={title} onClick={open} icon={<IconUserOutlineMedium />}>
     {props.wide && <span className={css.launcherText}><span className={css.launcherName}>{label}</span>
-      {quota && <span className={css.launcherQuota}>{quota}{snapshot.view?.balanceStale && ' *'}</span>}</span>}
+      {quota && <span className={css.launcherQuota}>{quota}{view?.balanceStale && ' *'}</span>}</span>}
   </Button>
 }
 
@@ -183,7 +224,7 @@ export function AccountGate(props: PropsRuntime<'shell.overlay'> & SharedProps &
   const snapshot = props.useAccount(value => value)
   const open = snapshot.loginVisible && snapshot.view !== undefined
     && snapshot.view.status !== 'signed-in'
-  return <Modal open={open} title={props.t('title')} closeLabel={props.t('close')} onClose={() => {
+  return <Modal open={open} title={props.t('nav')} closeLabel={props.t('close')} contentClassName={css.dialogContent ?? ''} onClose={() => {
     if (snapshot.busy) return
     props.showLogin(false)
     void props.cancel()

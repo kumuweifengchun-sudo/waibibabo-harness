@@ -4111,6 +4111,24 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'display-safe usage or an explicit query failure; no request bodies or credentials are retained.',
       },
       {
+        signature: '@Remote getRegistrationOptions(): Promise<PlatformResult<RegistrationOptions>>',
+        description: 'Read the platform\'s public registration settings.',
+        parameters: [],
+        returns: 'Enabled signup fields, agreement links and verification requirements.',
+      },
+      {
+        signature: '@Remote sendRegistrationCode(id: RegistrationId, email: string, code: string): Promise<PlatformResult<number>>',
+        description: 'Send an email verification code for the current signup attempt.',
+        parameters: [{ name: 'id', description: 'Form attempt identifier, reused on resend.' }, { name: 'email', description: 'Email address being registered.' }, { name: 'code', description: 'Platform registration code.' }],
+        returns: 'platform resend delay in seconds.',
+      },
+      {
+        signature: '@Remote registerAccount(input: RegistrationInput): Promise<PlatformResult<null>>',
+        description: 'Create a platform account from the native signup form.',
+        parameters: [{ name: 'input', description: 'Confirmed email registration fields.' }],
+        returns: 'Confirmation after the platform creates the account.',
+      },
+      {
         signature: '@Remote startSignIn(): Promise<AccountView>',
         description: 'Start system-browser authorization with a loopback callback and PKCE.',
         parameters: [],
@@ -6073,7 +6091,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AccountFailure',
-    declaration: 'export type AccountFailure = \'network\' | \'timeout\' | \'server\' | \'authorization\' | \'credentials\' | \'captcha\' | \'two-factor\' | \'protocol\' | \'storage\' | \'expired\' | \'busy\' | \'no-models\' | \'revocation\' | \'upgrade-required\' | \'usage-filter\' | \'validation\' | \'unavailable\' | \'uncertain\' | \'conflict\' | \'invoice-evidence\' | \'gateway-unavailable\' | \'account-line-unavailable\' | \'insecure-gateway\' | \'balance\' | \'model-limits\' | \'payment-gateway\';',
+    declaration: 'export type AccountFailure = \'network\' | \'timeout\' | \'server\' | \'authorization\' | \'credentials\' | \'captcha\' | \'two-factor\' | \'protocol\' | \'storage\' | \'expired\' | \'busy\' | \'no-models\' | \'revocation\' | \'upgrade-required\' | \'usage-filter\' | \'validation\' | \'unavailable\' | \'uncertain\' | \'conflict\' | \'invoice-evidence\' | \'gateway-unavailable\' | \'account-line-unavailable\' | \'insecure-gateway\' | \'balance\' | \'model-limits\' | \'payment-gateway\' | \'registration-input\' | \'registration-code\' | \'registration-expired\' | \'registration-unknown\' | \'email-code\' | \'email-rate\' | \'email-exists\' | \'email-domain\' | \'payment-limit\' | \'payment-return\' | \'payment-channel\' | \'payment-input\';',
   },
   {
     name: 'AccountNotification',
@@ -8397,7 +8415,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'OrderRequest',
-    declaration: 'export interface OrderRequest {\n    readonly amount: number;\n    readonly method: string;\n    readonly kind: \'balance\' | \'subscription\';\n    readonly planId: SubscriptionPlanId | null;\n}',
+    declaration: 'export interface OrderRequest {\n    readonly amount: number;\n    readonly method: string;\n    readonly channelId?: PaymentChannelId;\n    readonly kind: \'balance\' | \'subscription\';\n    readonly planId: SubscriptionPlanId | null;\n}',
   },
   {
     name: 'OTelEventRecord',
@@ -8456,12 +8474,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface PatchHunk {\n    lineNumber: number;\n    context?: string;\n    oldLines: string[];\n    newLines: string[];\n    isEndOfFile: boolean;\n}',
   },
   {
+    name: 'PaymentChannelId',
+    declaration: 'export type PaymentChannelId = Branded<\'Sub2apiPaymentChannelId\'>;',
+  },
+  {
     name: 'PaymentLaunch',
     declaration: 'export interface PaymentLaunch {\n    readonly id: PaymentOrderId;\n    readonly amount: number;\n    readonly payAmount: number;\n    readonly currency: string;\n    readonly expiresAt: string;\n    readonly paymentUrl: string | null;\n    readonly qrCode: string | null;\n}',
   },
   {
     name: 'PaymentMethod',
-    declaration: 'export interface PaymentMethod {\n    readonly id: string;\n    readonly name: string;\n    readonly currency: string;\n    readonly minimum: number;\n    readonly maximum: number;\n    readonly feeRate: number;\n    readonly available: boolean;\n}',
+    declaration: 'export interface PaymentMethod {\n    readonly id: string;\n    readonly channelId?: PaymentChannelId;\n    readonly name: string;\n    readonly currency: string;\n    readonly minimum: number;\n    readonly maximum: number;\n    readonly feeRate: number;\n    readonly available: boolean;\n}',
   },
   {
     name: 'PaymentOrder',
@@ -8862,6 +8884,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'RedactedSecret',
     declaration: 'export interface RedactedSecret {\n    path: string[];\n    set: boolean;\n}',
+  },
+  {
+    name: 'RegistrationId',
+    declaration: 'export type RegistrationId = Branded<\'RegistrationId\'>;',
+  },
+  {
+    name: 'RegistrationInput',
+    declaration: 'export interface RegistrationInput {\n    readonly id: RegistrationId;\n    readonly email: string;\n    readonly registrationCode: string;\n    readonly password: string;\n    readonly emailCode: string;\n    readonly affiliate: string;\n    readonly promo: string;\n}',
+  },
+  {
+    name: 'RegistrationOptions',
+    declaration: 'export interface RegistrationOptions {\n    readonly enabled: boolean;\n    readonly emailVerification: boolean;\n    readonly registrationCode: boolean;\n    readonly affiliate: boolean;\n    readonly promo: boolean;\n    readonly captcha: boolean;\n    readonly notice: string;\n    readonly agreements: readonly {\n        readonly id: string;\n        readonly title: string;\n    }[];\n}',
   },
   {
     name: 'Registry',

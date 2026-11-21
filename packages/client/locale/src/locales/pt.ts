@@ -3,6 +3,7 @@ import type { en } from './en.ts'
 
 /** Complete Portuguese copy for the common namespace. */
 export const pt = {
+  'helpFor': 'Sobre {topic}',
   'ok': 'OK',
   'cancel': 'Cancelar',
   'close': 'Fechar',

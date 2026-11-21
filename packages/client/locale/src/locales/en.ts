@@ -2,6 +2,7 @@ import type { CommonKey } from './zh.ts'
 
 /** en base dictionary for the common namespace, checked complete against the zh key set. */
 export const en = {
+  'helpFor': 'About {topic}',
   'ok': 'OK',
   'cancel': 'Cancel',
   'close': 'Close',

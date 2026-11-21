@@ -27,6 +27,7 @@ describe('Sub2API account through Loader', () => {
     const f = await fixture({ groups })
     const initial = await f.account.signInWithPassword('user@example.com', 'password')
     expect(initial.selectedGroup).toBe('8')
+    expect(f.context.llm.listProviders()[0]?.name).toBe('Waibibabo · First group')
     expect(initial.models).toEqual(['relay-model'])
     await f.account.selectGroup('3' as Sub2apiGroupId)
     expect((await f.account.refresh()).selectedGroup).toBe('3')
@@ -78,7 +79,7 @@ describe('Sub2API account through Loader', () => {
   })
 
   it('signs in, lists allowed models and sends inference with a separate leased credential', async () => {
-    const f = await fixture()
+    const f = await fixture({ productShortName: 'WSS' })
     const state = await f.account.signInWithPassword('user@example.com', 'password-not-stored')
     expect(state.error).toBeNull()
     expect(state.status).toBe('signed-in')
@@ -86,7 +87,7 @@ describe('Sub2API account through Loader', () => {
     expect(state.usage?.todayCost).toBe(0.25)
     expect(state.models).toEqual(['relay-model'])
     expect(state.selectedGroup).toBe('3')
-    expect(f.context.llm.listProviders().map(provider => provider.id)).toEqual(['sub2api-u7-g3'])
+    expect(f.context.llm.listProviders()).toMatchObject([{ id: 'sub2api-u7-g3', name: 'WSS · Standard' }])
     expect((await f.context.llm.listModels('sub2api-u7-g3')).map(model => model.id)).toEqual(['relay-model'])
     const prepared = await f.context.llm.prepareCall({ provider: 'sub2api-u7-g3', model: 'relay-model' })
     const chunks = []

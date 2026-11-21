@@ -2,16 +2,19 @@
 
 import z from '@deepseek-ai/schemastery'
 
-/** Onboarding options after schema defaults are applied. */
+/** Models page and onboarding options after schema defaults are applied. */
 export interface Config {
   /** Offer the browser API-key step when no native shell owns credential onboarding. */
   credentialOnboarding: boolean
+  /** Display the built-in provider directory and its API-key and add-provider controls. */
+  showProviderSettings: boolean
 }
 
 /** Validate Host configuration and its public page-bootstrap payload. */
 export const Config: z<Partial<Config>, Config> = z.object({
   credentialOnboarding: z.boolean().default(true),
+  showProviderSettings: z.boolean().default(true),
 })
 
-/** Page-global key carrying only the public onboarding options. */
+/** Page-global key carrying the public Models page and onboarding options. */
 export const ONBOARDING_CONFIG_GLOBAL = '__DSH_MODELS_ONBOARDING__'

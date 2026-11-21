@@ -416,6 +416,13 @@ describe('ModelsSection', () => {
     await screen.findByRole('status')
   })
 
+  it('shows the contributed settings without waiting for provider data when provider settings are disabled', () => {
+    render(<ModelsSection showProviderSettings={false} renderSlot={name =>
+      name === 'settings.models.footer' ? <div>Account model groups</div> : null} />)
+    expect(screen.getByText('Account model groups')).toBeTruthy()
+    expect(screen.queryByText(en.intro)).toBeNull()
+  })
+
   it('waits for the current snapshot before remounting setup after a failed page load', async () => {
     const { controller, face, mirror, mutate } = await mountFirstRun()
     const oldKey = screen.getByLabelText<HTMLInputElement>(en.keyInput)

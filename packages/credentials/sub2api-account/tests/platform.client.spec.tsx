@@ -11,7 +11,7 @@ import { InvoiceSection } from '../src/client/InvoiceSection.tsx'
 import { initialUsageState } from '../src/client/usage-state.ts'
 import type { AccountInjected, ClientAccountState } from '../src/client/AccountSection.tsx'
 import type { PlatformProps } from '../src/client/PlatformCommon.tsx'
-import type { AccountView, CheckoutView, GatewayId, ImageOutputId, InvoiceId, InvoiceRequest, PaymentOrderId,
+import type { AccountView, CheckoutView, GatewayId, ImageOutputId, InvoiceId, InvoiceRequest, PaymentChannelId, PaymentOrderId,
   Sub2apiGroupId, Sub2apiUserId, SubscriptionPlanId } from '../src/types.ts'
 import { zh } from '../src/client/locales.ts'
 
@@ -29,12 +29,6 @@ const testPlan = { id: '5' as SubscriptionPlanId, name: '测试订阅', descript
   currency: 'CNY', validity: 30, validityUnit: 'day', features: [] }
 
 function fixture(plans: CheckoutView['plans'] = []) {
-  const scrollDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollIntoView')
-  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() })
-  releases.push(() => {
-    if (scrollDescriptor) Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', scrollDescriptor)
-    else Reflect.deleteProperty(HTMLElement.prototype, 'scrollIntoView')
-  })
   const view: AccountView = { productName: 'Waibibabo Harnesss', platformOrigin: 'https://platform.example', status: 'signed-in', authorizationUrl: null,
     profile: { id: '7' as Sub2apiUserId, email: 'user@example.com', name: 'Example', balance: 10 }, groups: [
       { id: '3' as Sub2apiGroupId, name: 'Standard', platform: 'openai', imageGeneration: true },
@@ -45,6 +39,7 @@ function fixture(plans: CheckoutView['plans'] = []) {
     ], usage: null, error: null }
   const account = createSnapshotStore<ClientAccountState>({ view, busy: false, failed: false, loginVisible: false, usageVisible: false })
   const actions: AccountInjected = { hooks: { account, usage: createSnapshotStore(initialUsageState()) },
+    registrationOptions: vi.fn(), sendRegistrationCode: vi.fn(), registerAccount: vi.fn(),
     signIn: vi.fn(async () => {}), start: vi.fn(async () => {}), verify: vi.fn(async () => {}), cancel: vi.fn(async () => {}),
     signOut: vi.fn(async () => {}), refresh: vi.fn(async () => {}), selectGroup: vi.fn(async () => {}),
     setAccountOrigin: vi.fn(async () => {}),
@@ -91,6 +86,8 @@ it('places platform protocol controls in Models and requires consent for an HTTP
   fireEvent.change(protocol, { target: { value: 'anthropic-messages' } })
   expect(f.actions.setProtocol).toHaveBeenCalledWith('3', 'gpt-5.1', 'anthropic-messages')
   const gateway = await screen.findByRole('combobox', { name: zh.gateways })
+  expect(gateway.parentElement).toBe(screen.getByRole('button', { name: zh.gatewayApply }).parentElement)
+  expect(screen.queryByText(/^当前连接/u)).toBeNull()
   fireEvent.change(gateway, { target: { value: 'http://39.106.5.29' } })
   expect(screen.getByRole('button', { name: zh.gatewayApply })).toHaveProperty('disabled', true)
   fireEvent.click(screen.getByLabelText(zh.gatewayConsent))
@@ -110,6 +107,23 @@ it('restores automatic model routing without changing the account connection', a
   expect(f.account.getSnapshot().view?.platformOrigin).toBe('https://platform.example')
 })
 
+it('shows the detected route in the automatic option and restores the saved mode after a failed switch', async () => {
+  const f = fixture()
+  const automatic = { ...gateways, selected: null, active: gateways.selected }
+  f.remote.getGateways.mockResolvedValue({ ok: true, value: { ok: true, data: automatic } })
+  f.remote.setGateway.mockResolvedValue({ ok: true, value: { ok: false, error: 'gateway-unavailable' } })
+  render(<ModelSection {...f.props} />)
+  const select = await screen.findByRole('combobox', { name: zh.gateways })
+  const active = within(select).getByRole('option', { name: '主站 · https://platform.example（自动）' })
+  expect(active).toHaveProperty('selected', true)
+  expect(select.parentElement).toBe(screen.getByRole('button', { name: zh.lineDetect }).parentElement)
+  fireEvent.change(select, { target: { value: gateways.selected } })
+  fireEvent.click(screen.getByRole('button', { name: zh.gatewayApply }))
+  await screen.findByRole('alert')
+  await waitFor(() => { expect(active).toHaveProperty('selected', true) })
+  expect(f.remote.setGateway).toHaveBeenCalledExactlyOnceWith(gateways.selected, false)
+})
+
 it('explains both Responses transports, starts with SSE and saves the model choice', async () => {
   const f = fixture()
   render(<ModelSection {...f.props} />)
@@ -117,9 +131,12 @@ it('explains both Responses transports, starts with SSE and saves the model choi
   const transport = screen.getByRole('combobox', { name: 'gpt-5.1 · ' + zh.modelTransport })
   expect(transport).toHaveProperty('value', 'sse')
   expect(transport).toHaveProperty('disabled', false)
-  expect(screen.getByText(zh.transportSseHint)).toBeTruthy()
-  expect(screen.getByText(zh.transportWebSocketHint)).toBeTruthy()
-  expect(document.getElementById(transport.getAttribute('aria-describedby') ?? '')?.textContent).toContain(zh.transportWebSocketHint)
+  expect(screen.queryByText(zh.transportSseHint)).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: '可用模型说明' }))
+  const help = screen.getByRole('tooltip')
+  expect(help.textContent).toContain(zh.transportSseHint)
+  expect(help.textContent).toContain(zh.transportWebSocketHint)
+  expect(transport.getAttribute('aria-description')).toContain(zh.transportWebSocketHint)
   fireEvent.change(transport, { target: { value: 'websocket' } })
   expect(f.actions.setTransport).toHaveBeenCalledWith('3', 'gpt-5.1', 'websocket')
   expect(f.actions.setProtocol).not.toHaveBeenCalled()
@@ -251,40 +268,186 @@ it('blocks generation while references are reading and aborts reads on account r
   expect(f.platform.injected.hooks.platform.getSnapshot().errors.imageUploads).toBeNull()
 })
 
-it('shows a created order without opening payment automatically or marking it paid', async () => {
+it('opens and resumes a subscription checkout in its own dialog without changing the billing page', async () => {
   const f = fixture([testPlan])
   const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+  const expiresAt = new Date(2099, 0, 1, 9).toISOString()
   f.remote.createOrder.mockResolvedValue({ ok: true, value: { ok: true, data: { id: '19' as PaymentOrderId, amount: 10, payAmount: 10.2,
-    currency: 'CNY', expiresAt: '2099-01-01T09:00:00Z', paymentUrl: 'https://pay.example/19', qrCode: null } } })
-  render(<BillingSection {...f.props} />)
-  fireEvent.click(await screen.findByRole('button', { name: zh.billingSubscribe }))
-  const link = await screen.findByRole('link', { name: zh.billingOpenPayment })
-  expect(link.getAttribute('href')).toBe('https://pay.example/19')
+    currency: 'CNY', expiresAt, paymentUrl: 'https://pay.example/19', qrCode: 'data:image/png;base64,aGVsbG8=' } } })
+  const { container } = render(<BillingSection {...f.props} />)
+  const subscribe = await screen.findByRole('button', { name: zh.billingSubscribe })
+  const resume = screen.getByRole('button', { name: zh.billingPayment })
+  expect(resume).toHaveProperty('disabled', true)
+  const before = container.textContent
+  subscribe.focus()
+  fireEvent.click(subscribe)
+  const dialog = await screen.findByRole('dialog', { name: '订单详情 #19' })
+  expect(container.contains(dialog)).toBe(false)
+  expect(container.textContent).toBe(before)
+  expect(dialog.contains(document.activeElement)).toBe(true)
+  expect(within(dialog).getByRole('link', { name: zh.billingOpenPayment })).toHaveProperty('href', 'https://pay.example/19')
+  expect(within(dialog).getByRole('img', { name: zh.billingScan })).toBeTruthy()
+  await expect(`${dialog.textContent}\n`).toMatchFileSnapshot('./expected/platform-payment-dialog.txt')
   expect(open).not.toHaveBeenCalled()
-  await waitFor(() => { expect(document.activeElement).toBe(screen.getByRole('region', { name: zh.billingPayment })) })
+  fireEvent.keyDown(document, { key: 'Escape' })
+  expect(screen.queryByRole('dialog')).toBeNull()
+  expect(document.activeElement).toBe(subscribe)
+  fireEvent.click(resume)
+  const reopened = within(screen.getByRole('dialog', { name: '订单详情 #19' }))
+  expect(reopened.getByRole('img', { name: zh.billingScan })).toBeTruthy()
+  expect(f.remote.createOrder).toHaveBeenCalledTimes(1)
+  expect(f.remote.cancelOrder).not.toHaveBeenCalled()
   expect(f.platform.injected.hooks.platform.getSnapshot().paymentState).toBeNull()
   f.remote.getOrder.mockResolvedValueOnce({ ok: true, value: { ok: true, data: { id: '19' as PaymentOrderId,
     number: 'ORDER-19', amount: 10, payAmount: 10.2, currency: 'CNY', expiresAt: '2099-01-01T09:00:00Z',
     status: 'COMPLETED', kind: 'balance', method: 'alipay', createdAt: '2026-11-12T08:00:00Z' } } })
-  fireEvent.click(screen.getByRole('button', { name: zh.billingCheckPayment }))
-  await screen.findByText('状态：' + zh.statusCompleted)
+  fireEvent.click(reopened.getByRole('button', { name: zh.billingCheckPayment }))
+  await reopened.findByText(zh.statusCompleted)
   expect(screen.queryByRole('link', { name: zh.billingOpenPayment })).toBeNull()
   await waitFor(() => { expect(f.actions.refresh).toHaveBeenCalled() })
 })
 
-it('opens the platform recharge page without creating a desktop balance order', async () => {
+it.each([
+  { status: 'CANCELLED', retryRead: false }, { status: 'COMPLETED', retryRead: false }, { status: 'CANCELLED', retryRead: true },
+])('reads the current order after cancellation outside the history page ($status, retry=$retryRead)', async ({ status, retryRead }) => {
   const f = fixture()
-  const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+  const id = '236' as PaymentOrderId
+  const launch = { id, amount: 10, payAmount: 10, currency: 'CNY', expiresAt: '2099-01-01T09:00:00Z',
+    paymentUrl: null, qrCode: 'data:image/png;base64,aGVsbG8=' }
+  f.remote.createOrder.mockResolvedValue({ ok: true, value: { ok: true, data: launch } })
+  f.remote.cancelOrder.mockResolvedValue({ ok: true, value: { ok: true, data: null } })
+  const record = { ...launch, number: 'ORDER-236', status, kind: 'balance', method: 'alipay', createdAt: '2026-11-21T02:00:00Z' }
+  f.remote.getOrder.mockResolvedValue({ ok: true, value: { ok: true, data: record } })
+  if (retryRead) f.remote.getOrder.mockResolvedValueOnce({ ok: true, value: { ok: false, error: 'network' } })
+  render(<BillingSection {...f.props} />)
+  fireEvent.change(await screen.findByLabelText('充值金额（CNY）'), { target: { value: '10' } })
+  fireEvent.click(screen.getByRole('button', { name: zh.billingCreateRecharge }))
+  let panel = within(await screen.findByRole('dialog', { name: '订单详情 #236' }))
+  expect(panel.getByRole('img', { name: zh.billingScan })).toBeTruthy()
+  fireEvent.click(panel.getByRole('button', { name: zh.billingCancel }))
+  if (retryRead) {
+    await waitFor(() => { expect(panel.getByRole('button', { name: zh.billingCheck })).toHaveProperty('disabled', false) })
+    expect(panel.getByRole('status').textContent).toBe(zh.billingAwaitingCheck)
+    expect(panel.getByRole('alert').textContent).toBe(zh.network)
+    expect(panel.queryByRole('img')).toBeNull()
+    fireEvent.click(panel.getByRole('button', { name: zh.close }))
+    f.remote.getOrders.mockResolvedValueOnce({ ok: true, value: { ok: true, data: {
+      items: [{ ...record, status: 'PENDING' }], total: 1, page: 1, pageSize: 20,
+    } } })
+    fireEvent.click(screen.getByRole('button', { name: zh.billingRefresh }))
+    const row = await screen.findByRole('row', { name: /ORDER-236/u })
+    fireEvent.click(within(row).getByRole('button', { name: zh.usageDetails }))
+    panel = within(screen.getByRole('dialog', { name: '订单详情 #236' }))
+    expect(panel.getByRole('status').textContent).toBe(zh.billingAwaitingCheck)
+    expect(panel.queryByRole('button', { name: zh.billingCancel })).toBeNull()
+    expect(panel.queryByRole('img')).toBeNull()
+    fireEvent.click(panel.getByRole('button', { name: zh.billingCheck }))
+  }
+  await panel.findByText(status === 'CANCELLED' ? zh.statusCancelled : zh.statusCompleted)
+  expect(f.remote.cancelOrder).toHaveBeenCalledExactlyOnceWith(id)
+  expect(f.remote.getOrder).toHaveBeenCalledTimes(retryRead ? 2 : 1)
+  expect(f.remote.getOrder).toHaveBeenLastCalledWith(id, false)
+  expect(panel.queryByRole('img')).toBeNull()
+  expect(panel.queryByRole('button', { name: zh.billingCancel })).toBeNull()
+})
+
+it('creates a balance order without a subscription plan and checks the selected method limits', async () => {
+  const f = fixture()
   render(<BillingSection {...f.props} />)
   await screen.findByText(zh.billingNoPlans)
-  fireEvent.click(screen.getByRole('button', { name: zh.billingWebRecharge }))
-  expect(open).toHaveBeenCalledWith('https://platform.example/purchase', '_blank', 'noopener,noreferrer')
-  expect(screen.queryByRole('button', { name: '创建充值订单' })).toBeNull()
-  expect(screen.queryByLabelText('充值金额（CNY）')).toBeNull()
-  expect(screen.queryByRole('combobox', { name: zh.billingMethod })).toBeNull()
-  expect(screen.queryByRole('heading', { name: zh.billingRecharge })).toBeNull()
-  expect(document.body.textContent).not.toMatch(/充值在浏览器中完成|单笔范围|支付手续费率/u)
+  const input = screen.getByLabelText('充值金额（CNY）')
+  const submit = screen.getByRole('button', { name: zh.billingCreateRecharge })
+  expect(submit).toHaveProperty('disabled', true)
+  fireEvent.change(input, { target: { value: '5001' } })
+  expect(submit).toHaveProperty('disabled', true)
   expect(f.remote.createOrder).not.toHaveBeenCalled()
+  fireEvent.change(input, { target: { value: '18.50' } })
+  fireEvent.click(submit)
+  await waitFor(() => { expect(f.remote.createOrder).toHaveBeenCalledExactlyOnceWith({ amount: 18.5, method: 'alipay', kind: 'balance', planId: null }) })
+  expect(screen.getByRole('link', { name: zh.billingWebRecharge })).toHaveProperty('href', 'https://platform.example/purchase')
+})
+
+it('keeps a history order open after cancellation removes its row and reserves the QR code for its own checkout', async () => {
+  const f = fixture([testPlan])
+  const expiresAt = '2099-01-01T09:00:00Z'
+  const previous = { id: '17' as PaymentOrderId, number: 'ORDER-17', amount: 5, payAmount: 5, currency: 'CNY',
+    expiresAt, createdAt: '2026-11-21T02:00:00Z', status: 'PENDING', kind: 'balance', method: 'alipay' }
+  f.remote.getOrders.mockResolvedValueOnce({ ok: true, value: { ok: true, data: { items: [previous], total: 1, page: 1, pageSize: 20 } } })
+  f.remote.createOrder.mockResolvedValue({ ok: true, value: { ok: true, data: { id: '19' as PaymentOrderId, amount: 10, payAmount: 10,
+    currency: 'CNY', expiresAt, paymentUrl: 'https://pay.example/19', qrCode: 'data:image/png;base64,aGVsbG8=' } } })
+  f.remote.cancelOrder.mockResolvedValue({ ok: true, value: { ok: true, data: null } })
+  f.remote.getOrder.mockResolvedValue({ ok: true, value: { ok: true, data: { ...previous, status: 'CANCELLED' } } })
+  render(<BillingSection {...f.props} />)
+  fireEvent.click(await screen.findByRole('button', { name: zh.billingSubscribe }))
+  fireEvent.click(within(await screen.findByRole('dialog', { name: '订单详情 #19' })).getByRole('button', { name: zh.close }))
+  const history = within(screen.getByRole('region', { name: zh.billingOrders }))
+  expect(history.queryByRole('button', { name: zh.billingCancel })).toBeNull()
+  fireEvent.click(history.getByRole('button', { name: zh.usageDetails }))
+  const dialog = within(screen.getByRole('dialog', { name: '订单详情 #17' }))
+  expect(dialog.getByText('ORDER-17')).toBeTruthy()
+  expect(dialog.getByText('5.00 CNY')).toBeTruthy()
+  expect(dialog.queryByRole('img')).toBeNull()
+  expect(dialog.queryByRole('link')).toBeNull()
+  fireEvent.click(dialog.getByRole('button', { name: zh.billingCancel }))
+  await history.findByText(zh.billingEmpty)
+  expect(dialog.getByRole('status').textContent).toBe(zh.statusCancelled)
+  expect(f.remote.cancelOrder).toHaveBeenCalledExactlyOnceWith(previous.id)
+  expect(f.remote.getOrder).toHaveBeenCalledExactlyOnceWith(previous.id, false)
+  fireEvent.click(dialog.getByRole('button', { name: zh.close }))
+  fireEvent.click(history.getByRole('button', { name: zh.billingPayment }))
+  const recent = within(screen.getByRole('dialog', { name: '订单详情 #19' }))
+  expect(recent.getByRole('status').textContent).toBe(zh.statusPending)
+  expect(recent.getByRole('img', { name: zh.billingScan })).toBeTruthy()
+})
+
+it('leaves a dismissed dialog closed when a late status check settles, even if the history still reports pending', async () => {
+  const f = fixture([testPlan])
+  const record = { id: '19' as PaymentOrderId, number: 'ORDER-19', amount: 10, payAmount: 10, currency: 'CNY', status: 'PENDING',
+    createdAt: '2026-11-21T02:00:00Z', expiresAt: '2099-01-01T09:00:00Z', kind: 'subscription', method: 'alipay' }
+  f.remote.createOrder.mockResolvedValue({ ok: true, value: { ok: true, data: { ...record, paymentUrl: 'https://pay.example/19', qrCode: null } } })
+  f.remote.getOrders.mockResolvedValue({ ok: true, value: { ok: true, data: { items: [record], total: 1, page: 1, pageSize: 20 } } })
+  const checking = Promise.withResolvers<Awaited<ReturnType<PlatformRemote['getOrder']>>>()
+  f.remote.getOrder.mockReturnValueOnce(checking.promise)
+  render(<BillingSection {...f.props} />)
+  fireEvent.click(await screen.findByRole('button', { name: zh.billingSubscribe }))
+  const dialog = within(await screen.findByRole('dialog'))
+  fireEvent.click(dialog.getByRole('button', { name: zh.billingCheckPayment }))
+  fireEvent.click(dialog.getByRole('button', { name: zh.close }))
+  await act(async () => {
+    checking.resolve({ ok: true, value: { ok: true, data: { ...record, status: 'COMPLETED' } } })
+    await checking.promise
+  })
+  await waitFor(() => { expect(f.remote.getOrders).toHaveBeenCalledTimes(2) })
+  expect(screen.queryByRole('dialog')).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: zh.billingPayment }))
+  const reopened = within(screen.getByRole('dialog'))
+  expect(reopened.getByRole('status').textContent).toBe(zh.statusCompleted)
+  expect(reopened.queryByRole('link', { name: zh.billingOpenPayment })).toBeNull()
+  expect(reopened.queryByRole('button', { name: zh.billingCancel })).toBeNull()
+})
+
+it('withdraws the QR code and payment link at the deadline while leaving the status check available', async () => {
+  const f = fixture([testPlan])
+  const start = new Date('2026-11-21T04:00:00Z')
+  f.remote.createOrder.mockResolvedValue({ ok: true, value: { ok: true, data: { id: '20' as PaymentOrderId, amount: 10, payAmount: 10,
+    currency: 'CNY', expiresAt: new Date(start.getTime() + 1_000).toISOString(), paymentUrl: 'https://pay.example/20',
+    qrCode: 'data:image/png;base64,aGVsbG8=' } } })
+  const view = render(<BillingSection {...f.props} />)
+  const subscribe = await screen.findByRole('button', { name: zh.billingSubscribe })
+  vi.useFakeTimers()
+  try {
+    vi.setSystemTime(start)
+    await act(async () => { fireEvent.click(subscribe) })
+    const dialog = within(screen.getByRole('dialog'))
+    expect(dialog.getByRole('img', { name: zh.billingScan })).toBeTruthy()
+    act(() => { vi.advanceTimersByTime(1_000) })
+    expect(dialog.getByText(zh.billingPaymentExpired)).toBeTruthy()
+    expect(dialog.queryByRole('img')).toBeNull()
+    expect(dialog.queryByRole('link')).toBeNull()
+    expect(dialog.getByRole('button', { name: zh.billingCheck })).toHaveProperty('disabled', false)
+    expect(f.remote.getOrder).not.toHaveBeenCalled()
+    expect(f.remote.cancelOrder).not.toHaveBeenCalled()
+  } finally { view.unmount(); vi.useRealTimers() }
 })
 
 it('uses the only available subscription payment method without showing a selector', async () => {
@@ -301,6 +464,30 @@ it('uses the only available subscription payment method without showing a select
   await waitFor(() => { expect(f.remote.createOrder).toHaveBeenCalledWith({ amount: 10, method: 'alipay', kind: 'subscription', planId: '5' }) })
 })
 
+it('checks a channel limit against the discounted payment plus fees and submits the original recharge amount', async () => {
+  const f = fixture()
+  const result = await f.remote.getCheckout()
+  if (!result.ok || !result.value.ok) throw new Error('fixture checkout missing')
+  const checkout = result.value.data
+  const method = checkout.methods[0]!
+  const id = '9' as PaymentChannelId
+  f.remote.getCheckout.mockResolvedValue({ ok: true, value: { ok: true, data: {
+    ...checkout, methods: [method, { ...method, channelId: id, name: '支付宝二号', minimum: 0, maximum: 8, feeRate: 20 }],
+    bonusMode: 'discount', bonusTiers: [{ minimum: 10, percent: 50 }],
+  } } })
+  render(<BillingSection {...f.props} />)
+  fireEvent.change(await screen.findByLabelText(zh.billingMethod), { target: { value: 'alipay:9' } })
+  const amount = screen.getByLabelText('充值金额（CNY）')
+  const submit = screen.getByRole('button', { name: zh.billingCreateRecharge })
+  fireEvent.change(amount, { target: { value: '15' } })
+  expect(submit).toHaveProperty('disabled', true)
+  fireEvent.change(amount, { target: { value: '12' } })
+  fireEvent.click(submit)
+  await waitFor(() => { expect(f.remote.createOrder).toHaveBeenCalledWith({
+    kind: 'balance', amount: 12, method: 'alipay', channelId: id, planId: null,
+  }) })
+})
+
 it('offers payment selection only when multiple channels can purchase a subscription', async () => {
   const f = fixture([testPlan])
   const initial = await f.remote.getCheckout()
@@ -314,9 +501,12 @@ it('offers payment selection only when multiple channels can purchase a subscrip
   await waitFor(() => { expect(f.remote.createOrder).toHaveBeenCalledWith({ amount: 10, method: 'wxpay', kind: 'subscription', planId: '5' }) })
   const multiple = await f.remote.getCheckout()
   if (!multiple.ok || !multiple.value.ok) throw new Error('fixture checkout missing')
-  f.remote.getCheckout.mockResolvedValue({ ok: true, value: { ok: true, data: { ...multiple.value.data, plans: [] } } })
+  f.remote.getCheckout.mockResolvedValue({ ok: true, value: { ok: true, data: {
+    ...multiple.value.data, balanceDisabled: true, plans: [],
+  } } })
   fireEvent.click(screen.getByRole('button', { name: zh.billingRefresh }))
   await screen.findByText(zh.billingNoPlans)
+  expect(screen.queryByRole('form', { name: zh.billingRecharge })).toBeNull()
   expect(screen.queryByRole('combobox', { name: zh.billingMethod })).toBeNull()
 })
 
@@ -329,20 +519,32 @@ it('explains unavailable subscription payment without showing an empty selector'
   await screen.findByText(zh.billingNoMethod)
   expect(screen.queryByRole('combobox', { name: zh.billingMethod })).toBeNull()
   expect(screen.getByRole('button', { name: zh.billingSubscribe })).toHaveProperty('disabled', true)
-  expect(screen.getByRole('button', { name: zh.billingWebRecharge })).toHaveProperty('disabled', false)
+  expect(screen.getByRole('button', { name: zh.billingCreateRecharge })).toHaveProperty('disabled', true)
 })
 
-it('renders platform Markdown headings, tables and emphasis without executing HTML', async () => {
+it('previews payment guidance on hover and opens formatted plan details on activation', async () => {
   const f = fixture([testPlan])
   const response = await f.remote.getCheckout()
   if (!response.ok || !response.value.ok) throw new Error('fixture checkout missing')
   f.remote.getCheckout.mockResolvedValue({ ok: true, value: { ok: true, data: { ...response.value.data,
-    notice: '### 充值活动\n\n| 金额 | 赠送 |\n| --- | --- |\n| 100 | **额外赠送** |\n\n<script>bad()</script>', help: '**支付说明**',
+    notice: '### 充值活动\n\n| 金额 | 赠送 |\n| --- | --- |\n| 100 | **额外赠送** |\n\n<script>bad()</script>', help: '[支付指南](https://platform.example/help)',
   } } })
   render(<BillingSection {...f.props} />)
-  expect(await screen.findByRole('heading', { name: '充值活动' })).toBeTruthy()
-  expect(screen.getByRole('cell', { name: '额外赠送' }).querySelector('strong')).toBeTruthy()
-  expect(screen.getByText('套餐说明').tagName).toBe('STRONG')
+  const paymentHelp = await screen.findByRole('button', { name: '支付说明' })
+  expect(screen.queryByRole('heading', { name: '充值活动' })).toBeNull()
+  expect(screen.queryByText('套餐说明')).toBeNull()
+  fireEvent.pointerOver(paymentHelp)
+  const preview = within(await screen.findByRole('tooltip'))
+  expect(preview.getByRole('heading', { name: '充值活动' })).toBeTruthy()
+  expect(preview.getByRole('cell', { name: '额外赠送' }).querySelector('strong')).toBeTruthy()
+  fireEvent.click(paymentHelp)
+  const payment = within(screen.getByRole('dialog', { name: '支付说明' }))
+  expect(payment.getByRole('link', { name: '支付指南' })).toHaveProperty('href', 'https://platform.example/help')
+  expect(payment.queryByText(/bad\(\)/u)).toBeNull()
+  fireEvent.click(payment.getByRole('button', { name: zh.close }))
+  fireEvent.click(screen.getByRole('button', { name: '测试订阅说明' }))
+  const plan = within(screen.getByRole('dialog', { name: '测试订阅说明' }))
+  expect(plan.getByText('套餐说明').tagName).toBe('STRONG')
   expect(document.querySelector('script')).toBeNull()
 })
 
@@ -418,6 +620,11 @@ it('shows the server invoice quote before submission', async () => {
   await waitFor(() => { expect(screen.getByRole('button', { name: zh.invoiceApply })).toHaveProperty('disabled', false) })
   fireEvent.click(screen.getByRole('button', { name: zh.invoiceApply }))
   await screen.findByRole('dialog')
+  expect(screen.queryByText(zh.invoiceFileHint)).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: '付款凭证说明' }))
+  expect(screen.getByRole('tooltip').textContent).toContain(zh.invoiceFileHint)
+  fireEvent.keyDown(document, { key: 'Escape' })
+  expect(screen.queryByRole('tooltip')).toBeNull()
   fireEvent.change(screen.getByLabelText(zh.invoicePaymentAmount), { target: { value: '500' } })
   expect(screen.getByRole('button', { name: zh.invoiceSubmit })).toHaveProperty('disabled', true)
   fireEvent.click(screen.getByRole('button', { name: zh.invoiceCalculate }))
@@ -558,7 +765,7 @@ it('edits a single model allocation independently and can restore global inherit
   const own = { contextWindow: 131072, maxInputTokens: 98304, maxOutputTokens: 32768 }
   f.account.set({ ...f.account.getSnapshot(), view: { ...f.view, modelLimitOverrides: { 'gpt-5.1': own } } })
   render(<ModelSection {...f.props} />)
-  fireEvent.change(screen.getByLabelText(zh.modelOverrideTitle), { target: { value: 'gpt-5.1' } })
+  fireEvent.change(screen.getByRole('combobox', { name: zh.modelOverrideTitle }), { target: { value: 'gpt-5.1' } })
   const form = screen.getByRole('form', { name: 'gpt-5.1 · ' + zh.modelOverrideTitle })
   fireEvent.change(within(form).getByLabelText(zh.modelMaxOutput), { target: { value: '16384' } })
   fireEvent.click(within(form).getByRole('button', { name: zh.modelLimitsSave }))

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /** Account forms preserve secrets locally and require an explicit login action. */
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
@@ -10,7 +10,7 @@ import { zh } from '../src/client/locales.ts'
 import { initialUsageState } from '../src/client/usage-state.ts'
 import type { AccountView, Sub2apiGroupId, Sub2apiUserId } from '../src/types.ts'
 
-afterEach(cleanup)
+afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 const initial: AccountView = {
   productName: '歪比巴卜', platformOrigin: 'https://www.waibibabo.com', status: 'signed-out',
   authorizationUrl: null, profile: null, groups: [], selectedGroup: null, models: [], modelProtocols: [],
@@ -21,7 +21,12 @@ const initial: AccountView = {
 function account(view: Partial<AccountView> = {}, language = zh, gate = false) {
   const store = createSnapshotStore<ClientAccountState>({ view: { ...initial, ...view },
     busy: false, failed: false, loginVisible: true, usageVisible: false })
-  const actions = { signIn: vi.fn(), start: vi.fn(), verify: vi.fn(), cancel: vi.fn(),
+  const actions = {
+    registrationOptions: vi.fn(async () => ({ ok: true as const, data: { enabled: true, emailVerification: true, registrationCode: true,
+      promo: false, affiliate: true, captcha: false, notice: '', agreements: [{ id: 'terms', title: '服务协议' }] } })),
+    sendRegistrationCode: vi.fn(async (_id: string, _email: string, _code: string) => ({ ok: true as const, data: 60 })),
+    registerAccount: vi.fn(async () => ({ ok: true as const, data: null })),
+    signIn: vi.fn(), start: vi.fn(), verify: vi.fn(), cancel: vi.fn(), openBilling: vi.fn(),
     refresh: vi.fn(), signOut: vi.fn(), selectGroup: vi.fn(), setAccountOrigin: vi.fn(),
     showLogin: vi.fn(), showUsage: vi.fn(), loadUsage: vi.fn(),
     setProtocol: vi.fn(), setTransport: vi.fn(), setModelLimitOverride: vi.fn(), setModelLimits: vi.fn() }
@@ -29,7 +34,8 @@ function account(view: Partial<AccountView> = {}, language = zh, gate = false) {
     useUsage: bindSnapshotSelector(createSnapshotStore(initialUsageState(new Date(2026, 10, 12)))),
     renderFactorySlot: vi.fn(), useFactorySlot: vi.fn(),
     renderSlot: () => <img src="/product-logo.png" alt="" />,
-    t: (key: string) => Object.hasOwn(language, key) ? language[key as keyof typeof language] : key,
+    t: (key: keyof typeof zh, params?: Record<string, string>) =>
+      language[key].replace(/\{(\w+)\}/gu, (_match, name: string) => params?.[name] ?? name),
   } as ComponentProps<typeof AccountContent>
   render(gate
     ? <AccountGate {...props} renderFactorySlot={() => <AccountContent {...props} />} /> : <AccountContent {...props} />)
@@ -37,6 +43,29 @@ function account(view: Partial<AccountView> = {}, language = zh, gate = false) {
 }
 
 describe('platform account UI', () => {
+  it('uses one attempt for native signup and email verification', async () => {
+    const actions = account({}, zh, true)
+    fireEvent.click(screen.getByRole('button', { name: zh.registerAccount }))
+    await screen.findByLabelText(zh.signupRegistrationCode)
+    const fill = (label: string, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } })
+    fill(zh.email, 'new@example.com')
+    fill(zh.signupPassword, 'example-password')
+    fill(zh.signupConfirm, 'example-password')
+    fill(zh.signupRegistrationCode, 'REG')
+    expect(screen.getByRole('button', { name: zh.signupSend })).toHaveProperty('disabled', true)
+    fireEvent.click(screen.getByRole('checkbox'))
+    fireEvent.click(screen.getByRole('button', { name: zh.signupSend }))
+    await screen.findByText(zh.signupSent)
+    fill(zh.signupEmailCode, '123456')
+    fireEvent.click(screen.getByRole('button', { name: zh.signupSubmit }))
+    await screen.findByText(zh.registrationReturned)
+    const attempt = actions.sendRegistrationCode.mock.calls[0]
+    expect(attempt).toEqual([expect.any(String), 'new@example.com', 'REG'])
+    expect(actions.registerAccount).toHaveBeenCalledWith(expect.objectContaining({ id: attempt?.[0],
+      email: 'new@example.com', registrationCode: 'REG', emailCode: '123456' }))
+    expect(screen.getByLabelText(zh.email)).toHaveProperty('value', 'new@example.com')
+  })
+
   it('offers automatic and manual account routing before sign-in', () => {
     const actions = account({ connection: { origins: [initial.platformOrigin, 'https://sub.example'], selected: null, active: initial.platformOrigin } })
     const select = screen.getByRole('combobox', { name: zh.accountLine })
@@ -50,10 +79,34 @@ describe('platform account UI', () => {
     expect(screen.getByLabelText(zh.email)).toBeTruthy()
   })
 
+  it('shows route guidance on demand without dismissing sign-in or clearing its draft', async () => {
+    const origin = initial.platformOrigin
+    account({ connection: { origins: [origin], selected: origin, active: origin } }, zh, true)
+    const email = screen.getByLabelText(zh.email)
+    fireEvent.change(email, { target: { value: 'draft@example.com' } })
+    const help = screen.getByRole('button', { name: '账号线路说明' })
+    expect(screen.queryByText(zh.description)).toBeNull()
+    expect(screen.queryByRole('tooltip')).toBeNull()
+    fireEvent.pointerOver(help)
+    const tip = await screen.findByRole('tooltip')
+    expect(tip.textContent).toContain(zh.accountLineHint)
+    expect(tip.textContent).toContain(initial.platformOrigin)
+    expect(help.getAttribute('aria-describedby')).toBe(tip.id)
+    fireEvent.pointerOut(help)
+    expect(screen.queryByRole('tooltip')).toBeNull()
+    fireEvent.click(help)
+    fireEvent.keyDown(help, { key: 'Escape' })
+    expect(screen.queryByRole('tooltip')).toBeNull()
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect(email).toHaveProperty('value', 'draft@example.com')
+  })
+
   it('keeps account actions available when only usage statistics are unavailable', () => {
-    account({ status: 'signed-in', usageError: 'server', profile: { id: '7' as Sub2apiUserId,
+    account({ status: 'signed-in', usageError: 'server', balanceStale: true, profile: { id: '7' as Sub2apiUserId,
       name: 'user@example.com', email: 'user@example.com', balance: 123.45 } })
     expect(screen.getByText(zh.usageSummaryUnavailable)).toBeTruthy()
+    expect(screen.getByText(zh.balanceStale)).toBeTruthy()
+    expect(screen.queryByText(zh.balanceAutoRefresh)).toBeNull()
     expect(screen.getByRole('button', { name: zh.refresh })).toHaveProperty('disabled', false)
     expect(screen.getByRole('button', { name: zh.signOut })).toHaveProperty('disabled', false)
   })
@@ -70,9 +123,30 @@ describe('platform account UI', () => {
     expect(screen.queryByLabelText('gpt-5.1 · ' + zh.modelProtocol)).toBeNull()
     expect(screen.queryByLabelText(zh.group)).toBeNull()
     expect(screen.queryByRole('button', { name: zh.usageTitle })).toBeNull()
-    expect(screen.getByRole('link', { name: zh.billingWebRecharge })).toHaveProperty('href', initial.platformOrigin + '/purchase')
+    fireEvent.click(screen.getByRole('button', { name: zh.billingBuy }))
+    expect(actions.openBilling).toHaveBeenCalledOnce()
     fireEvent.click(screen.getByRole('button', { name: zh.refresh }))
     expect(actions.refresh).toHaveBeenCalledOnce()
+  })
+
+  it('signs out only after confirmation and returns focus on cancel or Escape', () => {
+    const actions = account({ status: 'signed-in' })
+    const trigger = screen.getByRole('button', { name: zh.signOut })
+    trigger.focus()
+    fireEvent.click(trigger)
+    let dialog = within(screen.getByRole('dialog', { name: zh.signOutTitle }))
+    expect(document.activeElement).toBe(dialog.getByRole('button', { name: zh.cancel }))
+    fireEvent.click(dialog.getByRole('button', { name: zh.cancel }))
+    expect(document.activeElement).toBe(trigger)
+    fireEvent.click(trigger)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(actions.signOut).not.toHaveBeenCalled()
+    fireEvent.click(trigger)
+    dialog = within(screen.getByRole('dialog', { name: zh.signOutTitle }))
+    fireEvent.click(dialog.getByRole('button', { name: zh.signOutConfirm }))
+    expect(actions.signOut).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
   it('shows the brand mark and avoids repeating an email used as the display name', () => {
     account({ status: 'signed-in', profile: { id: '7' as Sub2apiUserId,

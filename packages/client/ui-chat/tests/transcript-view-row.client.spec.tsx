@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { contextMenuHook } from '@deepseek-ai/dsh-client-test-runtime'
+import { en as commonEn } from '@deepseek-ai/dsh-client-locale/src/locales/en.ts'
+import { zh as commonZh } from '@deepseek-ai/dsh-client-locale/src/locales/zh.ts'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
@@ -58,7 +60,7 @@ function mount(mode: TranscriptViewMode = 'standard', dictionary: typeof en | ty
     setTranscriptView,
     setCollapseTiming,
     setFoldedReplies,
-    t: makeTranslate(dictionary),
+    t: makeTranslate(dictionary, dictionary === en ? commonEn : commonZh),
   }
   render(<TranscriptViewRow {...props} />)
   return { setTranscriptView, setCollapseTiming, setFoldedReplies, collapseTiming, foldedReplies, props }
@@ -68,7 +70,8 @@ describe('TranscriptViewRow', () => {
   it('explains the preference and shows Standard by default', () => {
     mount()
     expect(screen.getByText('Work details')).toBeDefined()
-    expect(screen.getByText('Choose how much detail to show for tool calls')).toBeDefined()
+    expect(screen.queryByText('Choose how much detail to show for tool calls')).toBeNull()
+    expect(screen.getByRole('button', { name: 'About Work details' })).toBeDefined()
     expect(screen.getByRole('button', { name: /Standard/ }).getAttribute('aria-expanded')).toBe('false')
   })
 
@@ -80,8 +83,9 @@ describe('TranscriptViewRow', () => {
     const b = mount('standard', dictionary)
     const titleElement = screen.getByText(title)
     expect(screen.getByText(detailTitle).compareDocumentPosition(titleElement) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
-    expect(screen.getByText(description)).toBeDefined()
-    expect(screen.getAllByRole('button')).toHaveLength(3)
+    expect(screen.queryByText(description)).toBeNull()
+    expect(screen.getByRole('button', { name: b.props.t('helpFor', { topic: title }) })).toBeDefined()
+    expect(screen.getAllByRole('button', { expanded: false })).toHaveLength(3)
     const trigger = screen.getByRole('button', { name: completion })
     expect(trigger.getAttribute('aria-expanded')).toBe('false')
     fireEvent.click(trigger)
@@ -104,7 +108,8 @@ describe('TranscriptViewRow', () => {
     const b = mount('standard', dictionary)
     const timingTitle = dictionary === en ? 'When to Collapse Work Details' : '工作步骤收起时机'
     expect(screen.getByText(timingTitle).compareDocumentPosition(screen.getByText(title)) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
-    expect(screen.getByText(description)).toBeDefined()
+    expect(screen.queryByText(description)).toBeNull()
+    expect(screen.getByRole('button', { name: b.props.t('helpFor', { topic: title }) })).toBeDefined()
     fireEvent.click(screen.getByRole('button', { name: all }))
     expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual([all, final])
     fireEvent.click(screen.getByRole('menuitem', { name: final }))
@@ -120,7 +125,7 @@ describe('TranscriptViewRow', () => {
   it('omits the folded-reply choice while Verbose never folds a Turn', () => {
     const b = mount('verbose')
     expect(screen.queryByText('Replies After Collapse')).toBeNull()
-    expect(screen.getAllByRole('button')).toHaveLength(2)
+    expect(screen.getAllByRole('button', { expanded: false })).toHaveLength(2)
     fireEvent.click(screen.getByRole('button', { name: 'Verbose' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Standard' }))
     expect(b.setTranscriptView).toHaveBeenLastCalledWith('standard')
@@ -183,7 +188,8 @@ describe('TranscriptViewRow', () => {
   it('shows all four work-detail values in Chinese', () => {
     const b = mount('compact', zh)
     expect(screen.getByText('工作步骤展示')).toBeDefined()
-    expect(screen.getByText('选择希望看到多少工具调用细节')).toBeDefined()
+    expect(screen.queryByText('选择希望看到多少工具调用细节')).toBeNull()
+    expect(screen.getByRole('button', { name: '工作步骤展示说明' })).toBeDefined()
     fireEvent.click(screen.getByRole('button', { name: '简洁' }))
     fireEvent.click(screen.getByRole('menuitem', { name: '标准' }))
     expect(b.setTranscriptView).toHaveBeenLastCalledWith('standard')
@@ -255,7 +261,8 @@ describe('LinkOpeningRow', () => {
       setLinkOpening={setLinkOpening}
     />)
     expect(screen.getByText(title)).toBeDefined()
-    expect(screen.getByText(description)).toBeDefined()
+    expect(screen.queryByText(description)).toBeNull()
+    expect(screen.getByRole('button', { name: b.props.t('helpFor', { topic: title }) })).toBeDefined()
     fireEvent.click(screen.getByRole('button', { name: sidebar }))
     fireEvent.click(screen.getByRole('menuitem', { name: newTab }))
     expect(setLinkOpening).toHaveBeenLastCalledWith('new-tab')

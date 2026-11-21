@@ -23,12 +23,6 @@
   font-size: 14px;
   line-height: 22px;
 }
-.settingDescription {
-  margin: 0;
-  color: var(--dsw-alias-label-tertiary);
-  font-size: 12px;
-  line-height: 18px;
-}
 .button {
   display: inline-flex;
   align-items: center;

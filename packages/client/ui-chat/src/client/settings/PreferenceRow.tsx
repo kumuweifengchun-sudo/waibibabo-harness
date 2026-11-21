@@ -1,6 +1,7 @@
 /** Localized two-column selector shared by Chat preference rows. */
 import { useRef, useState } from 'react'
-import { IconChevronDownOutlineRegular, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconChevronDownOutlineRegular, InfoTip, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import css from './PreferenceRow.module.css'
 
 /**
@@ -8,7 +9,7 @@ import css from './PreferenceRow.module.css'
  * @param props - localized copy, selected value, choices, and mutation callback.
  * @returns the settings row.
  */
-export function PreferenceRow({ title, description, value, selectedLabel, options, onSelect }: {
+export function PreferenceRow({ title, description, value, selectedLabel, options, onSelect, t }: PropsLocale<'chat'> & {
   title: string
   description: string
   value: string
@@ -41,8 +42,7 @@ export function PreferenceRow({ title, description, value, selectedLabel, option
   return (
     <div className={css.row}>
       <div className={css.rowText}>
-        <div className={css.title}>{title}</div>
-        <div className={css.desc}>{description}</div>
+        <div className={css.title}>{title}<InfoTip label={t('helpFor', { topic: title })} text={description} /></div>
       </div>
       <Menu
         open={open}

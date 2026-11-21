@@ -9,7 +9,8 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
-import { allowAllAccess, bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
+import { allowAllAccess, bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+import { en as commonEn } from '@deepseek-ai/dsh-client-locale/src/locales/en.ts'
 import { FontFamilyRow } from '../src/client/FontFamilyRow.tsx'
 import type { FontFamilyRowComponentProps } from '../src/client/FontFamilyRow.tsx'
 import { createFontRowStore } from '../src/client/settings-store.ts'
@@ -57,7 +58,7 @@ function mount(kind: FontRole = 'code', code = '') {
     useContextMenu: contextMenuHook(),
     useStore: bindSnapshotSelector(store),
     actions: store.actions,
-    t: (key: string) => COPY[key] ?? key,
+    t: makeTranslate(COPY, commonEn),
     role: kind,
     setFontFamily,
   }
@@ -81,7 +82,8 @@ describe('normalizeFontFamily', () => {
 describe('FontFamilyRow', () => {
   it('shows the role copy and the persisted list, with a default placeholder', () => {
     const { field } = mount('code', '"Iosevka"')
-    expect(screen.getByText('Used for code')).toBeDefined()
+    expect(screen.queryByText('Used for code')).toBeNull()
+    expect(screen.getByRole('button', { name: 'About Code font' })).toBeDefined()
     expect(field.value).toBe('"Iosevka"')
     expect(field.placeholder).toBe('Default')
   })

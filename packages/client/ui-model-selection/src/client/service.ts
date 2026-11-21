@@ -17,6 +17,7 @@ import { Service } from '@deepseek-ai/cordis'
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionBinding } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
+import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import { WeakMapWithValues } from '@deepseek-ai/dsh-util-values'
 import { ModelCatalogDirectory } from './catalog.ts'
 import { ModelDirectory } from './directory.ts'
@@ -31,13 +32,14 @@ declare module '@deepseek-ai/cordis' {
 interface LiveState {
   /** Directories keyed by Client binding, removed by their scope disposer. */
   readonly directories: WeakMapWithValues<SessionBinding, ModelDirectory>
+  readonly providerFilters: Set<(provider: string) => boolean>
 }
 
 /** The `ctx.modelDirectories` session model-selection service. */
 export class ModelDirectoryResolver extends Service {
-  static inject = ['sessions', 'remote', 'remote.session']
+  static inject = ['sessions', 'remote', 'remote.session', 'commandUi']
 
-  private readonly live: LiveState = { directories: new WeakMapWithValues() }
+  private readonly live: LiveState = { directories: new WeakMapWithValues(), providerFilters: new Set() }
   private readonly catalog: ModelCatalogDirectory
 
   /**
@@ -56,6 +58,31 @@ export class ModelDirectoryResolver extends Service {
     ctx.remote.$on('settings/document-updated', () => { this.catalog.refresh() })
     ctx.remote.$on('credentials/record-updated', () => { this.catalog.refresh() })
     ctx.remote.$on('credentials/reference-updated', () => { this.catalog.refresh() })
+  }
+
+  /**
+   * Limit provider choices in both pickers using a product's current state.
+   * @param source - observable value that determines provider visibility.
+   * @param visible - whether a provider may appear for that value.
+   * @returns disposer that restores choices allowed by the remaining filters.
+   */
+  registerProviderFilter<T>(source: ObservableSnapshot<T>, visible: (value: T, provider: string) => boolean): () => void {
+    const { directories, providerFilters } = this.live
+    let value = source.getSnapshot()
+    const filter = (provider: string) => visible(value, provider)
+    const refresh = () => {
+      for (const directory of directories.values) directory.syncInputs()
+      this.ctx.commandUi.dismiss('model')
+    }
+    providerFilters.add(filter)
+    const unsubscribe = source.subscribe(() => {
+      const next = source.getSnapshot()
+      if (Object.is(next, value)) return
+      value = next
+      refresh()
+    })
+    refresh()
+    return () => { unsubscribe(); providerFilters.delete(filter); refresh() }
   }
 
   /**
@@ -81,6 +108,7 @@ export class ModelDirectoryResolver extends Service {
       binding.session.projections.faceOf('modelSelection'),
       () => binding.session.getSnapshot().blank,
       (name, attributes) => this.ctx.get('productAnalytics')?.track(name, attributes),
+      provider => [...live.providerFilters].every(filter => filter(provider)),
     )
     live.directories.set(binding, directory)
     actx.effect(() => () => {

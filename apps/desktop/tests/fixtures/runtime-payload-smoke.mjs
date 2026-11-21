@@ -2,11 +2,11 @@
 
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-import { delimiter, dirname, join, resolve } from 'node:path'
+import { basename, delimiter, dirname, join, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { checkPnpm } from './pnpm-smoke.mjs'
 
@@ -20,6 +20,27 @@ assert.equal(process.arch, descriptor.arch)
 const resourcesRuntime = process.argv[3] ?? join(dirname(root), 'runtime')
 const requireRuntime = createRequire(join(root, 'package.json'))
 const scratch = mkdtempSync(join(tmpdir(), 'dsh-runtime-payload-'))
+
+/** Check shell production dependencies using only module search paths inside the shipped ASAR. */
+function checkShellDependencies(archive) {
+  const visited = new Set()
+  function visit(file) {
+    if (visited.has(file)) return
+    visited.add(file)
+    const manifest = JSON.parse(readFileSync(file, 'utf8'))
+    const localRequire = createRequire(file)
+    for (const name of Object.keys(manifest.dependencies ?? {})) {
+      if (Object.hasOwn(manifest.optionalDependencies ?? {}, name)) continue
+      const dependency = localRequire.resolve.paths(name)
+        .filter(path => path.startsWith(archive + sep))
+        .map(path => join(path, name, 'package.json'))
+        .find(existsSync)
+      assert.ok(dependency, `Missing packaged dependency ${name} required by ${manifest.name}`)
+      visit(dependency)
+    }
+  }
+  visit(join(archive, 'package.json'))
+}
 
 /** Spawn only a fixed Node program and await the terminal's drained exit event. */
 async function checkPty() {
@@ -133,6 +154,7 @@ function checkHtml() {
 }
 
 try {
+  if (basename(dirname(root)) === 'app.asar') checkShellDependencies(dirname(root))
   const builtin = requireRuntime('node-addon-require-builtin')
   assert.equal(typeof builtin.requireBuiltin('internal/modules/esm/loader').getOrInitializeCascadedLoader, 'function')
   console.error('runtime payload: pnpm')

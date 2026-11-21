@@ -10,7 +10,7 @@ import type {
   ModelCatalogFailure, ModelProviderGroup, ModelSelection,
 } from '@deepseek-ai/dsh-api-session-controller/types'
 import type { SessionId } from '@deepseek-ai/dsh-api-remotes/client'
-import type { RemoteResult, TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
+import { RemoteError, type RemoteResult, type TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 import type { ObservableSnapshot, SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { ModelCatalogDirectory } from './catalog.ts'
@@ -56,6 +56,7 @@ export class ModelDirectory {
    * @param projected - durable model selection projected from Session history.
    * @param isBlank - whether this Session has no first message yet.
    * @param track - desktop-only callback after a successful user selection.
+   * @param providerVisible - whether the product currently offers this provider for selection.
    */
   constructor(
     private readonly sessions: Pick<TypertClientRemote['session'], 'selectModel'>,
@@ -65,6 +66,7 @@ export class ModelDirectory {
     private readonly projected: ObservableSnapshot<unknown>,
     private readonly isBlank: () => boolean,
     private readonly track?: TrackProductEvent,
+    private readonly providerVisible: (provider: string) => boolean = () => true,
   ) {
     this.unsubscribeCatalog = catalog.store.subscribe(() => { this.syncInputs() })
     this.unsubscribeSelection = projected.subscribe(() => { this.syncInputs() })
@@ -91,6 +93,11 @@ export class ModelDirectory {
    */
   async select(selection: ModelSelection): Promise<RemoteResult<void>> {
     this.assertAvailable()
+    if (!this.providerVisible(selection.provider)) {
+      return { ok: false, error: new RemoteError('session/model-unavailable', 'This provider is unavailable.', {
+        provider: selection.provider, model: selection.model,
+      }) }
+    }
     const previous = this.store.getSnapshot().current
     const previousEffort = previous?.reasoningEffort ?? (previous === null ? undefined : this.catalog.reasoningFor(previous)?.defaultEffort)
     const nextEffort = selection.reasoningEffort ?? this.catalog.reasoningFor(selection)?.defaultEffort
@@ -155,9 +162,12 @@ export class ModelDirectory {
     }
   }
 
-  private syncInputs(): void {
+  /** Recompute the selectable directory from its catalog, Session projection and current provider filters. */
+  syncInputs(): void {
     if (this.disposed) return
     const catalog = this.catalog.store.getSnapshot()
+    const groups = catalog.value?.groups.filter(group => this.providerVisible(group.id)) ?? []
+    const failures = catalog.value?.failures.filter(failure => this.providerVisible(failure.id)) ?? []
     const projected = modelSelectionProjection(this.projected.getSnapshot())
     const intended = projected?.next ?? catalog.value?.default
     const reasoning = intended === undefined ? undefined : this.catalog.reasoningFor(intended)
@@ -169,8 +179,8 @@ export class ModelDirectory {
         current: catalog.value === null ? null : this.store.getSnapshot().current,
         ...retainedEffort === undefined ? {} : { retainedEffort },
         routable: null,
-        groups: catalog.value?.groups ?? [],
-        failures: catalog.value?.failures ?? [],
+        groups,
+        failures,
         status: catalog.status === 'error' ? 'error' : 'loading',
         pending: this.store.getSnapshot().pending,
         error: catalog.error,
@@ -178,14 +188,14 @@ export class ModelDirectory {
       return
     }
     const selection = projected.next ?? catalog.value.default
-    const routable = catalog.value.groups.some(group => group.id === selection.provider
+    const routable = groups.some(group => group.id === selection.provider
       && group.models.some(model => model.id === selection.model))
     this.store.set({
       current: selection,
       ...retainedEffort === undefined ? {} : { retainedEffort },
       routable,
-      groups: catalog.value.groups,
-      failures: catalog.value.failures,
+      groups,
+      failures,
       status: this.store.getSnapshot().status === 'selecting'
         ? 'selecting'
         : 'ready',

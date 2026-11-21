@@ -25,8 +25,13 @@ interface CardPosition {
   bridge?: { left: number; top: number; width: number; height: number }
 }
 
+function previewLayer(anchor: HTMLElement | null): HTMLElement {
+  const layer = anchor?.closest('[role="dialog"][aria-modal="true"]')?.parentElement
+  return layer?.getAttribute('role') === 'presentation' ? layer : document.body
+}
+
 /**
- * Render an anchor with a hover-triggered preview card independently of nested tooltips.
+ * Render a hover preview outside scrolling content, in the anchor's modal layer or the document body.
  * Touch entry does not open a preview or intercept the anchor's action.
  * @param props.anchor - the hover target (rendered in place inside a wrapper span).
  * @param props.content - card content; the pointer may rest on it, so it is
@@ -349,7 +354,7 @@ export function HoverCard({
         <span ref={portalRef} className={css.portal}>
           {pos.bridge !== undefined && <span className={css.bridge} style={pos.bridge} data-hovercard-bridge="" aria-hidden />}
           {card}
-        </span>, document.body,
+        </span>, previewLayer(rootRef.current),
       )}
     </span>
   )

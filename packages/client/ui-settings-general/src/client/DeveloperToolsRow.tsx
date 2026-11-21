@@ -1,6 +1,6 @@
 /** General Settings control for shared developer-tool visibility and previews. */
 import { useState } from 'react'
-import { Switch } from '@deepseek-ai/dsh-client-ui-primitives'
+import { InfoTip, Switch } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import css from './DeveloperToolsRow.module.css'
@@ -19,15 +19,15 @@ export interface DeveloperToolsRowInjected {
 export function DeveloperToolsRow({ useDeveloperTools, setEnabled, t }:
   PropsRuntime<'settings.general.item'> & PropsLocale<'settings'> & InjectFace<DeveloperToolsRowInjected>) {
   const enabled = useDeveloperTools(value => value)
+  const title = t('developerTools.title')
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState(false)
   return <div className={css.row}>
     <div>
-      <div className={css.title}>{t('developerTools.title')}</div>
-      <div className={css.description}>{t('developerTools.description')}</div>
+      <div className={css.title}>{title}<InfoTip label={t('helpFor', { topic: title })} text={t('developerTools.description')} /></div>
       {failed && <div role="alert">{t('developerTools.error')}</div>}
     </div>
-    <Switch checked={enabled} disabled={busy} label={t('developerTools.title')}
+    <Switch checked={enabled} disabled={busy} label={title}
       onChange={(next) => {
         setFailed(false)
         setBusy(true)

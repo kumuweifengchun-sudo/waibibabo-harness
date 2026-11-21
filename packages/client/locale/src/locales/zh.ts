@@ -1,5 +1,6 @@
 /** zh base dictionary for the common namespace: cross-feature standard words. */
 export const zh = {
+  'helpFor': '{topic}说明',
   'ok': '确定',
   'cancel': '取消',
   'close': '关闭',

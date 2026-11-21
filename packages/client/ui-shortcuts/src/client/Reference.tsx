@@ -1,6 +1,6 @@
 /** Searchable editable shortcut reference and its General Settings row. */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Button, IconCloseOutlineRegular, IconRefreshOutlineRegular, Modal, ShortcutKeys, Tooltip, Toast, focusWithoutRing, isBehindModal } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, IconCloseOutlineRegular, IconRefreshOutlineRegular, InfoTip, Modal, ShortcutKeys, Tooltip, Toast, focusWithoutRing, isBehindModal } from '@deepseek-ai/dsh-client-ui-primitives'
 import { TextSearchIndex } from '@deepseek-ai/dsh-util-text-search'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ObservableSnapshot, PropsStore } from '@deepseek-ai/dsh-client-store'
@@ -53,11 +53,11 @@ const coreActionOrder = new Map<string, number>([
  * @returns the settings row.
  */
 export function ShortcutsRow({ actions, t, useCatalog }: PropsRuntime<'settings.general.item'> & Store & Locale & InjectFace<ReferenceInjected>) {
+  const title = t('settings')
   const shortcut = useCatalog(rows => rows.find(row => row.id === 'shortcuts.open'))
   return <div className={css.setting}>
     <div className={css.settingText}>
-      <div className={css.settingTitle}>{t('settings')}</div>
-      <p className={css.settingDescription}>{t('description')}</p>
+      <div className={css.settingTitle}>{title}<InfoTip label={t('helpFor', { topic: title })} text={t('description')} /></div>
     </div>
     <Tooltip disabled={!shortcut?.keys.length} label={t('global-hint')} shortcutKeys={shortcut?.keys}>
       <button className={css.button} type="button" aria-label={t('view')} aria-keyshortcuts={shortcut?.aria}

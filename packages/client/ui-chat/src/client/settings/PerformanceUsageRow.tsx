@@ -35,6 +35,7 @@ export function PerformanceUsageRow({ usePerformanceUsage, setPerformanceUsage, 
     : 'settings.performance.compact'
   return (
     <PreferenceRow
+      t={t}
       title={t('settings.performance.title')}
       description={t('settings.performance.description')}
       value={mode}

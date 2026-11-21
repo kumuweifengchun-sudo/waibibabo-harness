@@ -6,7 +6,7 @@
  * list and resets whenever that list changes.
  */
 import clsx from 'clsx'
-import { Input } from '@deepseek-ai/dsh-client-ui-primitives'
+import { InfoTip, Input } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import { normalizeFontFamily, type FontRole } from '../theme-settings.ts'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
@@ -42,8 +42,7 @@ export function FontFamilyRow({ t, role, setFontFamily, useStore }: FontFamilyRo
   return (
     <div className={clsx(rowCss.row, rowCss.stacked)}>
       <div className={rowCss.rowText}>
-        <div className={rowCss.title}>{title}</div>
-        <div className={rowCss.desc}>{t(`fontFamily.${role}.description`)}</div>
+        <div className={rowCss.title}>{title}<InfoTip label={t('helpFor', { topic: title })} text={t(`fontFamily.${role}.description`)} /></div>
       </div>
       <Input
         key={value}

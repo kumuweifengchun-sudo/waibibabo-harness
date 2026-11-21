@@ -22,7 +22,7 @@ type InvokeHandler = (event: InvokeEvent, ...args: unknown[]) => unknown
 const productMode = vi.hoisted(() => ({ platformAccounts: false, managedUpdates: true, chineseOnly: false }))
 vi.mock('../src/product.ts', async importOriginal => ({
   ...await importOriginal<typeof import('../src/product.ts')>(),
-  desktopProduct: { name: 'Waibibabo Harnesss', version: '0.1.0',
+  desktopProduct: { name: 'Waibibabo Harnesss', version: '0.1.1',
     get platformAccounts() { return productMode.platformAccounts },
     get managedUpdates() { return productMode.managedUpdates },
     get chineseOnly() { return productMode.chineseOnly },
@@ -909,7 +909,7 @@ describe('desktop main startup', () => {
     const zh = locale === 'zh-CN'
     expect(harness.dialog.showMessageBox).toHaveBeenLastCalledWith(expect.objectContaining({
       type: 'info', title: zh ? '关于 Waibibabo Harnesss' : 'About Waibibabo Harnesss', message: 'Waibibabo Harnesss',
-      detail: `${zh ? '版本' : 'Version'} V${packaged ? '1.0.0' : '0.1.0'}`, buttons: [zh ? '确定' : 'OK'], cancelId: 0,
+      detail: `${zh ? '版本' : 'Version'} V${packaged ? '1.0.0' : '0.1.1'}`, buttons: [zh ? '确定' : 'OK'], cancelId: 0,
     }))
     // A dialog that cannot open is logged, not surfaced as an unhandled rejection.
     harness.dialog.showMessageBox.mockRejectedValueOnce(new Error('overlay unavailable'))

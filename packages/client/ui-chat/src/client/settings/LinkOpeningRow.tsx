@@ -33,6 +33,7 @@ export function LinkOpeningRow({ useLinkOpening, useBrowserAvailable, setLinkOpe
   if (!browserAvailable) return null
   return (
     <PreferenceRow
+      t={t}
       title={t('settings.links.title')}
       description={t('settings.links.description')}
       value={destination}

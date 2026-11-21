@@ -24,6 +24,7 @@ afterEach(async () => { while (cleanups.length) await cleanups.pop()!() })
 export async function accountFixture(options: {
   issuerOrigin?: string
   accountOrigins?: string[]
+  productShortName?: string
   protocol?: ModelProtocolChoice
   responsesTransport?: 'auto' | 'sse'
   responsesIncrementalHistory?: boolean
@@ -233,6 +234,7 @@ export async function accountFixture(options: {
     { id: 'llm', name: options.agentLoop ? 'cordis:test-agent-dependencies' : 'cordis:test-llm' },
     { id: 'account', name: 'cordis:test-account', config: { platformOrigin: options.issuerOrigin ?? origin,
       accountOrigins: options.accountOrigins ?? (options.issuerOrigin === undefined ? [] : [origin]), productName: 'Waibibabo',
+      ...options.productShortName === undefined ? {} : { productShortName: options.productShortName },
       allowLoopbackHttp: true, protocol: options.protocol ?? 'openai-completions',
       ...options.responsesTransport === undefined ? {} : { responsesTransport: options.responsesTransport },
       ...options.responsesIncrementalHistory === undefined ? {} : { responsesIncrementalHistory: options.responsesIncrementalHistory } } },

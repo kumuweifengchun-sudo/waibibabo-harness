@@ -57,6 +57,17 @@ function installClipboard(writeText: (text: string) => Promise<void>): () => voi
 }
 
 describe('HoverCard', () => {
+  it('keeps a dialog preview above its mask and outside the scrolling dialog', () => {
+    render(<div role="presentation" data-testid="layer"><div role="dialog" aria-modal="true">
+      <HoverCard inline anchor={<button>Info</button>} content={<div>Payment details</div>} />
+    </div></div>)
+    fireEvent.pointerOver(screen.getByRole('button'))
+    act(() => { vi.advanceTimersByTime(500) })
+    const preview = screen.getByText('Payment details')
+    expect(screen.getByTestId('layer').contains(preview)).toBe(true)
+    expect(screen.getByRole('dialog').contains(preview)).toBe(false)
+  })
+
   it.each([false, true])('opens mouse previews only when a pointer can hover: %s', (canHover) => {
     vi.stubGlobal('matchMedia', () => ({ matches: canHover }))
     const { wrapper } = mount()

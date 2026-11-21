@@ -7,7 +7,7 @@
  * click echo.
  */
 import {
-  IconChevronDownOutlineRegular, IconChevronUpOutlineRegular,
+  IconChevronDownOutlineRegular, IconChevronUpOutlineRegular, InfoTip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime, PropsStore } from '@deepseek-ai/dsh-client-ui-slots'
 import { FONT_SIZE_SPECS, type FontRole } from '../theme-settings.ts'
@@ -48,12 +48,12 @@ export interface FontSizeRowExpander {
  */
 export function FontSizeRow({ t, role, setFontSize, useStore, expander }: FontSizeRowComponentProps) {
   const fontSize = useStore(s => s.fontSizes[role])
+  const title = t(`fontSize.${role}.title`)
   const { min, max } = FONT_SIZE_SPECS[role]
   return (
     <div className={css.row}>
       <div className={css.rowText}>
-        <div className={css.title}>{t(`fontSize.${role}.title`)}</div>
-        <div className={css.desc}>{t(`fontSize.${role}.description`)}</div>
+        <div className={css.title}>{title}<InfoTip label={t('helpFor', { topic: title })} text={t(`fontSize.${role}.description`)} /></div>
       </div>
       <div className={css.control}>
         <div className={css.stepper}>

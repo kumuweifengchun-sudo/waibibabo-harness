@@ -46,7 +46,7 @@ describe('installer preparation preserves application dependencies', () => {
     try {
       const { createElectronBuilderConfig } = await import('../electron-builder.config.mjs')
       const config = createElectronBuilderConfig(env, platform, 'x64')
-      expect(config.extraMetadata.version).toBe('0.1.0')
+      expect(config.extraMetadata.version).toBe('0.1.1')
       const metadataPackager = new Packager({ projectDir: tmpdir() })
       const metadata: unknown = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
       if (typeof metadata !== 'object' || metadata === null) throw new Error('Expected a package manifest object')
@@ -56,7 +56,7 @@ describe('installer preparation preserves application dependencies', () => {
       })
       const appInfo = new AppInfo(metadataPackager, undefined)
       expect(appInfo.companyName).toBe('Waibibabo Harnesss')
-      expect(appInfo.version).toBe('0.1.0')
+      expect(appInfo.version).toBe('0.1.1')
       expect(appInfo.updaterCacheDirName).toBe('waibibabo-harnesss-updater')
       expect(appInfo.copyright).toBe(`Copyright © ${new Date().getFullYear()} Waibibabo Harnesss`)
       if (platform === 'win32') {

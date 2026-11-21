@@ -29,7 +29,7 @@ it('restores product brand slots after remount and releases all contributions on
     for (const hole of holes) expect(slots.entries(hole)).toHaveLength(1)
     expect(locale.bind('waibibabo.brand')('name')).toBe('Waibibabo Harnesss')
     expect(locale.bind('waibibabo.brand')('shortName')).toBe('WSS')
-    expect(locale.bind('waibibabo.brand')('version')).toBe('0.1.0')
+    expect(locale.bind('waibibabo.brand')('version')).toBe('0.1.1')
     remove()
     for (const hole of holes) expect(slots.entries(hole)).toHaveLength(0)
     declare()

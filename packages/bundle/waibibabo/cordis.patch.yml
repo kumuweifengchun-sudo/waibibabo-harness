@@ -9,6 +9,7 @@
 - id: ui-settings-models
   config:
     credentialOnboarding: false
+    showProviderSettings: false
 - id: desktop-product-telemetry
   disabled: true
 - id: product-analytics
@@ -35,4 +36,5 @@
         platformOrigin: !!js process.env.WAIBIBABO_PLATFORM_ORIGIN || 'https://www.waibibabo.com'
         accountOrigins: !!js "process.env.WAIBIBABO_PLATFORM_ORIGIN && process.env.WAIBIBABO_PLATFORM_ORIGIN !== 'https://www.waibibabo.com' ? [] : ['https://sub.waibibabo.com', 'https://api.waibibabo.com']"
         productName: Waibibabo Harnesss
+        productShortName: WSS
         allowLoopbackHttp: !!js process.env.WAIBIBABO_ALLOW_LOOPBACK_HTTP === '1'

@@ -27,7 +27,7 @@ Web GUI 允许用户通过 `/model` 弹窗或 composer 模型控件切换既有�
 <a id="use-this-package"></a>
 ## 使用本包
 
-DeepSeek 账号和 API Key 路由显示为独立提供方分组，各自展示相同的已配置模型目录。
+默认情况下，DeepSeek 账号和 API Key 路由各自显示为一个提供方分组，各自展示相同的已配置模型目录。产品可通过 `modelDirectories.registerProviderFilter` 随账号状态调整两个模型选择器中的可见提供方。
 
 未选择模型或已保存的选择不在目录中时，composer 以常规字重显示“请选择模型”，并隐藏推理强度文案。点击后直接打开模型列表，Escape 和 Shift+Tab 关闭列表。目录为空时，模型菜单不显示，也不进入无障碍树；状态区域显示“暂无可用模型”
 

@@ -2,16 +2,20 @@
 import { z } from 'zod'
 import QRCode from 'qrcode'
 import { AccountError, parse } from './http.ts'
-import type { CheckoutView, OrderPage, OrderRequest, PaymentLaunch, PaymentOrder, PaymentOrderId,
+import type { CheckoutView, OrderPage, OrderRequest, PaymentChannelId, PaymentLaunch, PaymentMethod, PaymentOrder, PaymentOrderId,
   PlatformPageQuery, SubscriptionPlanId, SubscriptionView } from './platform-types.ts'
 
 const id = z.number().int().positive()
 const money = z.number().nonnegative()
 const method = z.object({ currency: z.string().optional(), display_name: z.string().optional(),
-  single_min: money, single_max: money, fee_rate: money })
+  single_min: money, single_max: money, fee_rate: money, available: z.boolean().optional() })
+const channelId = z.string().regex(/^[1-9]\d{0,18}$/u)
+const channel = method.extend({ payment_type: z.string(), channel_id: channelId, channel_name: z.string(),
+  sort_order: z.number(), daily_limit: money, daily_remaining: z.number() })
 const plan = z.object({ id, name: z.string(), description: z.string(), price: money, currency: z.string().optional(),
   validity_days: z.number().int().positive(), validity_unit: z.string(), group_name: z.string().optional(), features: z.array(z.string()) })
 const checkout = z.object({ methods: z.record(z.string(), method), plans: z.array(plan), balance_disabled: z.boolean(),
+  payment_channels: z.array(channel).optional(), recharge_fee_rate: money.optional(),
   balance_recharge_multiplier: money, subscription_usd_to_cny_rate: money,
   recharge_bonus_tiers: z.array(z.object({ min_amount: money, bonus_percent: money })).nullish(),
   recharge_bonus_mode: z.string().optional(), recharge_bonus_notice: z.string().optional(), help_text: z.string().optional() })
@@ -30,13 +34,28 @@ const query = z.object({ page: z.number().int().min(1).max(100000), pageSize: z.
  */
 export function checkoutView(value: unknown, config: unknown): CheckoutView {
   const data = parse(checkout, value)
+  const channels = (data.payment_channels ?? []).filter(value => value.payment_type === 'alipay')
+    .sort((a, b) => a.sort_order - b.sort_order)
+  const methods: PaymentMethod[] = channels.map(value => ({
+    id: value.payment_type, channelId: value.channel_id as PaymentChannelId,
+    name: value.channel_name || value.display_name || value.payment_type,
+    currency: value.currency ?? '', minimum: value.single_min, maximum: value.daily_limit > 0
+      ? Math.min(value.daily_remaining, value.single_max || Infinity) : value.single_max,
+    feeRate: data.recharge_fee_rate ?? value.fee_rate,
+    available: value.available !== false && (value.daily_limit === 0 || value.daily_remaining > 0),
+  }))
+  for (const [key, value] of Object.entries(data.methods)) {
+    const id = key === 'alipay_direct' ? 'alipay' : key === 'wxpay_direct' ? 'wxpay' : key
+    if (id === 'alipay' && channels.length > 0 || id !== key && Object.hasOwn(data.methods, id)) continue
+    methods.push({ id, name: value.display_name || id, currency: value.currency ?? '', minimum: value.single_min,
+      maximum: value.single_max, feeRate: data.recharge_fee_rate ?? value.fee_rate, available: value.available !== false })
+  }
   return { enabled: parse(z.object({ enabled: z.boolean() }), config).enabled,
     balanceDisabled: data.balance_disabled, balanceMultiplier: data.balance_recharge_multiplier,
     subscriptionExchangeRate: data.subscription_usd_to_cny_rate, bonusMode: data.recharge_bonus_mode ?? 'bonus',
     bonusTiers: (data.recharge_bonus_tiers ?? []).map(tier => ({ minimum: tier.min_amount, percent: tier.bonus_percent })),
     notice: data.recharge_bonus_notice ?? '', help: data.help_text ?? '',
-    methods: Object.entries(data.methods).map(([key, value]) => ({ id: key, name: value.display_name || key,
-      currency: value.currency ?? '', minimum: value.single_min, maximum: value.single_max, feeRate: value.fee_rate, available: true })),
+    methods,
     plans: data.plans.map(value => ({ id: String(value.id) as SubscriptionPlanId, name: value.name, description: value.description,
       price: value.price, currency: value.currency ?? '', validity: value.validity_days, validityUnit: value.validity_unit,
       group: value.group_name ?? '', features: value.features })),
@@ -50,11 +69,13 @@ export function checkoutView(value: unknown, config: unknown): CheckoutView {
  */
 export function orderRequest(value: OrderRequest, origin: string): object {
   const checked = z.object({ amount: money.positive(), method: z.string().min(1).max(100), kind: z.enum(['balance', 'subscription']),
-    planId: z.string().regex(/^[1-9]\d*$/u).nullable() }).safeParse(value)
-  if (!checked.success || value.kind === 'subscription' && value.planId === null) throw new AccountError('validation')
+    channelId: channelId.optional(), planId: z.string().regex(/^[1-9]\d*$/u).nullable() }).safeParse(value)
+  if (!checked.success || (value.kind === 'subscription') !== (value.planId !== null)
+    || value.channelId !== undefined && value.method !== 'alipay') throw new AccountError('validation')
   return { amount: value.amount, payment_type: value.method, order_type: value.kind,
-    ...(value.planId === null ? {} : { plan_id: Number(value.planId) }), is_mobile: false,
-    payment_source: 'hosted_redirect', return_url: origin + '/payment/result' }
+    ...(value.planId === null ? {} : { plan_id: Number(value.planId) }),
+    ...(value.channelId === undefined ? {} : { channel_id: value.channelId }), is_mobile: false,
+    payment_source: 'hosted_redirect', ...(value.channelId === undefined ? { return_url: origin + '/payment/result' } : {}) }
 }
 
 /** Project a newly created order into a payment page or locally rendered QR image.

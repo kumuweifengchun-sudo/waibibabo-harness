@@ -214,8 +214,9 @@ let bootWarnings: string[] = []
  * observers, font events, and frame callbacks jsdom lacks, and a full reset of the document,
  * the boot globals, and the injected plugin styles afterwards. A boot audit warning about an
  * inactive entry fails the test at teardown: every assembled composition must activate completely.
+ * @param options.initialResize - use the jsdom suite's initial size delivery for layout-dependent UI such as tooltips.
  */
-export function installAssembledBootEnv(): void {
+export function installAssembledBootEnv(options: { initialResize?: boolean } = {}): void {
   // jsdom implements no scroll geometry: the trigger menu reveals its
   // highlight with scrollIntoView on open, which a pasted leading token now
   // reaches in this lane (the editor re-tracks at the settled caret).
@@ -248,7 +249,7 @@ export function installAssembledBootEnv(): void {
     Object.defineProperty(navigator, 'languages', { value: ['en-US'], configurable: true })
     Object.defineProperty(navigator, 'language', { value: 'en-US', configurable: true })
     document.title = 'DeepSeek Harness'
-    vi.stubGlobal('ResizeObserver', ResizeObserverStub)
+    if (!options.initialResize) vi.stubGlobal('ResizeObserver', ResizeObserverStub)
     vi.stubGlobal('EventSource', EventSourceStub)
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) =>
       setTimeout(() => { callback(0) }, 0) as unknown as number)

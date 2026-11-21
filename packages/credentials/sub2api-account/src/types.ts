@@ -1,6 +1,30 @@
 /** Display-safe account data shared by the Host and client. */
 import type { Branded } from '@deepseek-ai/dsh-brand'
-export type { GatewayId, PaymentOrderId, SubscriptionPlanId, InvoiceId, InvoiceFileId, ImageOutputId, InvoiceRequestKey, PlatformResult,
+/** Public settings used by the native email registration form. */
+export interface RegistrationOptions {
+  readonly enabled: boolean
+  readonly emailVerification: boolean
+  readonly registrationCode: boolean
+  readonly affiliate: boolean
+  readonly promo: boolean
+  readonly captcha: boolean
+  readonly notice: string
+  readonly agreements: readonly { readonly id: string; readonly title: string }[]
+}
+/** Identifies one request to reserve a platform registration code. */
+export type RegistrationId = Branded<'RegistrationId'>
+/** Registration fields sent only to the account Host and platform. */
+export interface RegistrationInput {
+  readonly id: RegistrationId
+  readonly email: string
+  readonly registrationCode: string
+  readonly password: string
+  readonly emailCode: string
+  readonly affiliate: string
+  readonly promo: string
+}
+export type { GatewayId, PaymentOrderId, PaymentChannelId, SubscriptionPlanId, InvoiceId, InvoiceFileId, ImageOutputId,
+  InvoiceRequestKey, PlatformResult,
   GatewayEndpoint, GatewayView, ImageRequest, ImageReference, ImageReferenceId, ImageUploadLimits, GeneratedImage, ImageResult,
   PaymentMethod, SubscriptionPlan,
   CheckoutView, OrderRequest, PaymentLaunch, PaymentOrder, OrderPage, PlatformPageQuery, SubscriptionView,
@@ -12,6 +36,8 @@ export type Sub2apiGroupId = Branded<'Sub2apiGroupId'>
 export type Sub2apiUserId = Branded<'Sub2apiUserId'>
 /** Failure categories localized by the account UI. */
 export type AccountFailure = 'network' | 'timeout' | 'server' | 'authorization' | 'credentials' | 'captcha' | 'two-factor' | 'protocol' | 'storage' | 'expired' | 'busy' | 'no-models' | 'revocation' | 'upgrade-required' | 'usage-filter' | 'validation' | 'unavailable' | 'uncertain' | 'conflict' | 'invoice-evidence' | 'gateway-unavailable' | 'account-line-unavailable' | 'insecure-gateway' | 'balance' | 'model-limits' | 'payment-gateway'
+  | 'registration-input' | 'registration-code' | 'registration-expired' | 'registration-unknown' | 'email-code' | 'email-rate' | 'email-exists'
+  | 'email-domain' | 'payment-limit' | 'payment-return' | 'payment-channel' | 'payment-input'
 /** Inference wire protocols implemented by the bundled adapter. */
 export type ModelProtocol = 'openai-completions' | 'openai-responses' | 'anthropic-messages' | 'google-generative-ai'
 /** A user override or automatic model-specific selection. */

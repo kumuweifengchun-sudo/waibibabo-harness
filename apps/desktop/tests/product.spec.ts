@@ -13,7 +13,7 @@ describe('Waibibabo desktop identity', () => {
     expect(desktopProduct.managedUpdates).toBe(false)
     expect(desktopProduct.chineseOnly).toBe(true)
     expect(desktopProduct.shortName).toBe('WSS')
-    expect(desktopProduct.version).toBe('0.1.0')
+    expect(desktopProduct.version).toBe('0.1.1')
   })
 
   it('honors an explicit data directory without rewriting it', () => {

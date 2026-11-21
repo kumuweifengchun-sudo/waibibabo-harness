@@ -70,6 +70,7 @@ export type {
 } from './FileTypeIcon.tsx'
 export { UserTextRun, ReferenceChip, type UserTextRunProps, type ReferenceChipProps } from './user-text.tsx'
 export { Tooltip } from './Tooltip.tsx'
+export { InfoTip } from './InfoTip.tsx'
 export type { TooltipSide } from './Tooltip.tsx'
 export { pointerModality } from './input-modality.ts'
 export { Toast } from './Toast.tsx'

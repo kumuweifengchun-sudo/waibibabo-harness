@@ -29,6 +29,10 @@ export interface PlatformState {
   readonly orderQuery: PlatformPageQuery
   readonly payment: PaymentLaunch | null
   readonly paymentState: PaymentOrder | null
+  /** The retained checkout or the history row whose details are open. */
+  readonly paymentDialog: 'current' | PaymentOrder | null
+  /** Cancellation attempts that require an authoritative read before further payment actions. */
+  readonly pendingCancellationChecks: readonly PaymentOrderId[]
   readonly orderUncertain: boolean
   readonly invoices: InvoicePage | null
   readonly invoiceQuery: PlatformPageQuery
@@ -56,7 +60,8 @@ export function initialPlatformState(): PlatformState {
     imageDraft: { groupId: null, model: '', prompt: '', count: 1, size: '', references: [] }, imageResult: null,
     imageModels: [], imageModelsGroup: null, imageSaves: {},
     checkout: null, subscriptions: [], orders: null, orderQuery: { page: 1, pageSize: 20, status: '' }, payment: null,
-    paymentState: null, orderUncertain: false, invoices: null, invoiceQuery: { page: 1, pageSize: 20, status: '' },
+    paymentState: null, paymentDialog: null, pendingCancellationChecks: [], orderUncertain: false,
+    invoices: null, invoiceQuery: { page: 1, pageSize: 20, status: '' },
     invoiceOpen: false, invoice: null, invoiceDraft: newInvoiceDraft(), quote: null, invoiceSaved: false, invoiceUncertain: false }
 }
 
@@ -80,6 +85,9 @@ export interface PlatformInjected {
   saveImage: (id: import('../platform-types.ts').ImageOutputId) => Promise<void>
   loadBilling: (query?: PlatformPageQuery) => Promise<void>
   createPayment: (input: OrderRequest) => Promise<boolean>
+  /** Open a history row or, when omitted, the most recently created checkout. */
+  openPayment: (order?: PaymentOrder) => void
+  closePayment: () => void
   refreshPayment: (id: PaymentOrderId) => Promise<void>
   cancelPayment: (id: PaymentOrderId) => Promise<void>
   loadInvoices: (query?: PlatformPageQuery) => Promise<void>

@@ -3,6 +3,7 @@ import type { en } from './en.ts'
 
 /** Complete Russian copy for the common namespace. */
 export const ru = {
+  'helpFor': 'О настройке «{topic}»',
   'ok': 'OK',
   'cancel': 'Отмена',
   'close': 'Закрыть',

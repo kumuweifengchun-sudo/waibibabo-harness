@@ -22,6 +22,8 @@ export interface Config {
   responsesFallbackCooldownMs?: number
   /** Product name shown in the account page and browser consent. */
   productName: string
+  /** Short product name for provider headings in model pickers. Defaults to the product name. */
+  productShortName?: string
   /** Permit plain HTTP only for numeric loopback development origins. */
   allowLoopbackHttp?: boolean
   /** Bound each platform request, in milliseconds. */
@@ -63,6 +65,7 @@ export const Config = z.object({
   responsesSocketLimit: z.natural().min(1).default(16),
   responsesFallbackCooldownMs: z.natural().min(1000).default(60000),
   productName: z.string().required(),
+  productShortName: z.string().min(1),
   allowLoopbackHttp: z.boolean().default(false),
   requestTimeoutMs: z.natural().min(1000).default(30000),
   accountRefreshIntervalMs: z.natural().min(5000).default(60000),

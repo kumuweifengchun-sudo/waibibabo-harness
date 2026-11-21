@@ -8,7 +8,8 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { SessionListState } from '@deepseek-ai/dsh-api-session-controller/client'
 import type { WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
-import { allowAllAccess, bindSnapshotSelector } from '@deepseek-ai/dsh-client-test-runtime'
+import { allowAllAccess, bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+import { en as commonEn } from '@deepseek-ai/dsh-client-locale/src/locales/en.ts'
 import { FontSizeRow } from '../src/client/FontSizeRow.tsx'
 import type { FontSizeRowComponentProps } from '../src/client/FontSizeRow.tsx'
 import { createFontRowStore } from '../src/client/settings-store.ts'
@@ -60,7 +61,7 @@ function mount(fontSize = 14, role: FontRole = 'text') {
     useContextMenu: contextMenuHook(),
     useStore: bindSnapshotSelector(store),
     actions: store.actions,
-    t: (key: string) => COPY[key] ?? key,
+    t: makeTranslate(COPY, commonEn),
     role,
     setFontSize,
   }
@@ -75,7 +76,8 @@ describe('FontSizeRow', () => {
   it('renders the title and the current size with both arrows enabled mid-range', () => {
     mount(14)
     expect(screen.getByText('Font size')).toBeDefined()
-    expect(screen.getByText('Only affects conversation content')).toBeDefined()
+    expect(screen.queryByText('Only affects conversation content')).toBeNull()
+    expect(screen.getByRole('button', { name: 'About Font size' })).toBeDefined()
     expect(screen.getByText('14')).toBeDefined()
     expect(arrow('Increase font size').disabled).toBe(false)
     expect(arrow('Decrease font size').disabled).toBe(false)

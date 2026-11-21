@@ -565,6 +565,25 @@ Owns account credentials, browser attempts and the model routes they authorize.
  */
 @Remote async getUsage(query: UsageQuery, signal?: AbortSignal): Promise<UsageResult>
 
+/** Read the platform's public registration settings.
+ * @returns Enabled signup fields, agreement links and verification requirements.
+ */
+@Remote getRegistrationOptions(): Promise<PlatformResult<RegistrationOptions>>
+
+/** Send an email verification code for the current signup attempt.
+ * @param id - Form attempt identifier, reused on resend.
+ * @param email - Email address being registered.
+ * @param code - Platform registration code.
+ * @returns platform resend delay in seconds.
+ */
+@Remote sendRegistrationCode(id: RegistrationId, email: string, code: string): Promise<PlatformResult<number>>
+
+/** Create a platform account from the native signup form.
+ * @param input - Confirmed email registration fields.
+ * @returns Confirmation after the platform creates the account.
+ */
+@Remote registerAccount(input: RegistrationInput): Promise<PlatformResult<null>>
+
 /** Start system-browser authorization with a loopback callback and PKCE.
  * @returns the platform authorization URL and pending account state.
  */

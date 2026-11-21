@@ -63,6 +63,7 @@ export function TranscriptViewRow({
   return (
     <>
       <PreferenceRow
+        t={t}
         title={t('settings.transcript.title')}
         description={t('settings.transcript.description')}
         value={mode}
@@ -71,6 +72,7 @@ export function TranscriptViewRow({
         onSelect={(value) => { setTranscriptView(value as TranscriptViewMode) }}
       />
       <PreferenceRow
+        t={t}
         title={t('settings.collapse.title')}
         description={t('settings.collapse.description')}
         value={timing}
@@ -80,6 +82,7 @@ export function TranscriptViewRow({
       />
       {mode !== 'verbose' && (
         <PreferenceRow
+          t={t}
           title={t('settings.foldedReplies.title')}
           description={t('settings.foldedReplies.description')}
           value={replies}

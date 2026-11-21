@@ -6,6 +6,8 @@ import type { AccountFailure, Sub2apiGroupId } from './types.ts'
 export type GatewayId = Branded<'Sub2apiGatewayId'>
 /** Platform order identifier. */
 export type PaymentOrderId = Branded<'Sub2apiPaymentOrderId'>
+/** Platform checkout channel within a payment method. */
+export type PaymentChannelId = Branded<'Sub2apiPaymentChannelId'>
 /** Platform subscription plan identifier. */
 export type SubscriptionPlanId = Branded<'Sub2apiSubscriptionPlanId'>
 /** Platform invoice identifier. */
@@ -57,6 +59,7 @@ export interface ImageResult { readonly images: readonly GeneratedImage[] }
 /** Payment method and authoritative limits supplied by the platform. */
 export interface PaymentMethod {
   readonly id: string
+  readonly channelId?: PaymentChannelId
   readonly name: string
   readonly currency: string
   readonly minimum: number
@@ -93,6 +96,7 @@ export interface CheckoutView {
 export interface OrderRequest {
   readonly amount: number
   readonly method: string
+  readonly channelId?: PaymentChannelId
   readonly kind: 'balance' | 'subscription'
   readonly planId: SubscriptionPlanId | null
 }

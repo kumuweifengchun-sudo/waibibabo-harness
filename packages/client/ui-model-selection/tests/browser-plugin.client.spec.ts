@@ -116,7 +116,9 @@ async function bench(locale: 'zh' | 'en' = 'zh') {
     },
   })
   let contribution: CommandContribution | undefined
+  const dismiss = vi.fn()
   ctx.provide('commandUi', {
+    dismiss,
     register(c: CommandContribution) {
       contribution = c
       return () => { contribution = undefined }
@@ -182,7 +184,7 @@ async function bench(locale: 'zh' | 'en' = 'zh') {
     return { ...handle, projection }
   }
   return {
-    ctx, fiber, mint, calls, remote, track,
+    ctx, fiber, mint, calls, remote, track, dismiss,
     contribution: () => contribution!,
     popup: (): PopupSelectSpec => {
       const ui = contribution!.ui
@@ -207,6 +209,36 @@ async function bench(locale: 'zh' | 'en' = 'zh') {
 const projection = (id: string) => ({ sessionId: sid(id) })
 
 describe('ui-model-selection dual entry', () => {
+  it('applies live provider filters to both pickers, rejects stale picks and restores choices on disposal', async () => {
+    const b = await bench()
+    b.mint('filtered')
+    const input = projection('filtered')
+    const directory = b.ctx.modelDirectories.directoryFor(input.sessionId)
+    await directory.load()
+    const visible = createSnapshotStore(false)
+    const filter = b.ctx.inject(['modelDirectories'], (scope) => {
+      scope.effect(() => scope.modelDirectories.registerProviderFilter(visible,
+        (signedIn, provider) => signedIn && provider === 'external'), 'test provider visibility')
+    })
+    await filter.await()
+    expect(directory.store.getSnapshot().groups).toEqual([])
+    expect(await b.popup().options(input, new AbortController().signal)).toEqual([])
+    visible.set(true)
+    expect((await b.popup().options(input, new AbortController().signal)).map(row => row.label)).toEqual(['External Flash'])
+    expect(directory.store.getSnapshot().groups.map(group => group.id)).toEqual(['external'])
+    visible.set(false)
+    expect(b.dismiss).toHaveBeenLastCalledWith('model')
+    expect(directory.store.getSnapshot().groups).toEqual([])
+    expect(await directory.select({ provider: 'external', model: 'deepseek-v4-flash' })).toMatchObject({
+      ok: false, error: { code: 'session/model-unavailable' },
+    })
+    expect(b.calls.select).toBe(0)
+    await filter.dispose()
+    expect(directory.store.getSnapshot().groups.map(group => group.id)).toEqual(['deepseek-official', 'external'])
+    expect(b.calls.models).toBe(1)
+    await b.ctx.fiber.dispose()
+  })
+
   it('carries writer contention to the model seat and localizes the command failure', async () => {
     const b = await bench()
     b.mint('owned')

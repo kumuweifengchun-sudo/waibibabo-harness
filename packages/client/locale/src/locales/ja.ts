@@ -3,6 +3,7 @@ import type { en } from './en.ts'
 
 /** Japanese copy, checked against the English keys. */
 export const ja = {
+  'helpFor': '{topic}の説明',
   'ok': 'OK',
   'cancel': 'キャンセル',
   'close': '閉じる',

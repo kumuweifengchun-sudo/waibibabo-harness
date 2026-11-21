@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { en as commonEn } from '@deepseek-ai/dsh-client-locale/src/locales/en.ts'
 import { contextMenuHook } from '@deepseek-ai/dsh-client-test-runtime'
 import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -51,7 +52,7 @@ function mount() {
     useContextMenu: contextMenuHook(),
     useBusyEnter: bindSnapshotSelector(policy.busyEnter),
     setBusyEnter,
-    t: makeTranslate(en),
+    t: makeTranslate(en, commonEn),
   }
   render(<EnterBehaviorRow {...props} />)
   return { policy, setBusyEnter }
@@ -61,7 +62,8 @@ describe('EnterBehaviorRow', () => {
   it('explains the busy-only scope over Enter and Send and shows Queue by default', () => {
     mount()
     expect(screen.getByText('Send behavior while busy')).toBeDefined()
-    expect(screen.getByText('What Enter and the Send button do while the agent is running; Cmd/Ctrl+Enter uses the other behavior')).toBeDefined()
+    expect(screen.queryByText(en['settings.enter.description'])).toBeNull()
+    expect(screen.getByRole('button', { name: 'About Send behavior while busy' })).toBeDefined()
     expect(screen.getByRole('button', { name: /Queue/ }).getAttribute('aria-expanded')).toBe('false')
   })
 

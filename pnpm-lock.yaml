@@ -8717,6 +8717,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-layout':
         specifier: workspace:*
         version: link:../../client/ui-layout
+      '@deepseek-ai/dsh-client-ui-model-selection':
+        specifier: workspace:*
+        version: link:../../client/ui-model-selection
       '@deepseek-ai/dsh-client-ui-primitives':
         specifier: workspace:*
         version: link:../../client/ui-primitives

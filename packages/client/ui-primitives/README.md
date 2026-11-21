@@ -64,7 +64,8 @@ Check this table before writing a control in a feature package. A plugin cannot 
 | `Modal` | Centered dialog over a page mask. A nested dialog can intercept keys with `onKeyDownCapture` before document Escape handlers. The tint and dialog fade in while backdrop blur stays fully applied, honoring reduced motion. Set `backdropBlur={false}` when the caller already blurs the source page. `tone="warning"` places an amber warning icon in the title and removes the body's extra top margin; other dialogs retain their spacing. |
 | `RiskConfirmation` | Sensitive action gated behind an explicit checkbox, using the shared warning-title layout. |
 | `Tooltip` | Hover and keyboard-focus text anchored to a cloned child; optional `delayMs` controls hover delay and `focusDelayMs` controls keyboard-focus delay, both defaulting to 0 ms. Optional `portal` rendering escapes clipping containers and ancestor stacking contexts that cap the bubble's z-index. |
-| `HoverCard`, `HoverCardGroup` | Readable, optionally copyable hover preview; a physical list can opt cards into shared first-display dwell and exclusive display. |
+| `InfoTip` | An information button for short explanations. Supply a localized accessible label and tooltip text. Hover or focus to read, or tap to pin the tooltip. |
+| `HoverCard`, `HoverCardGroup` | Readable, optionally copyable hover preview. A modal's presentation layer hosts previews above its scrollable dialog. A list can share the initial hover delay and display one preview at a time. |
 | `DraggableImage` | Original-image gestures with explicit transfer and feedback callbacks. |
 | `ImageLightbox` | Shared image modal with focus restoration and Escape dismissal. |
 | `usePointerGrace` | Cancelable dismissal delay that lets the pointer cross the gap between a trigger and its card; pending timers are cleared on unmount. |

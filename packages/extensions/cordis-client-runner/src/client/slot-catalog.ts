@@ -4264,7 +4264,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
       },
     ],
     ownerProps: [
-      '/**\n * Owner share of a settings section entry. The shell owns modal visibility\n * and navigation; a section\'s data arrives through its own inject faces and\n * stores. `close` is the one shell affordance a section receives, for flows\n * that leave settings altogether (starting a session from a section) — the\n * onboarding coordinator\'s `openSection`/`complete` precedent, inverted.\n */\nexport interface SettingsSectionOwnerProps {\n  /** Close the settings panel (the shell owns the open state). */\n  close: () => void\n}',
+      '/** Shell navigation and dismissal actions available to the active settings section. */\nexport interface SettingsSectionOwnerProps {\n  /** Open another registered section within the same settings panel. */\n  selectSection?: (id: string) => void\n  /** Close the settings panel (the shell owns the open state). */\n  close: () => void\n}',
     ],
     ownerPropsReferences: [],
     standardProps: [
@@ -4344,7 +4344,12 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     hookContext: '',
     slotInject: '',
     declaredBy: 'an entry in \'sidebar.settings\' (client-ui-settings-general), so it exists while that entry is mounted',
-    occupants: [],
+    occupants: [
+      'sub2api-account IconUserOutlineMedium id \'sub2api-account\'',
+      'sub2api-account IconClockOutlineMedium id \'sub2api-usage\'',
+      'sub2api-account IconLayersOutlineMedium id \'sub2api-billing\'',
+      'sub2api-account IconListPenOutlineMedium id \'sub2api-invoices\'',
+    ],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'settings.section.icon\', () => ctx.slots.register(\n      { name: \'settings.section.icon\', id: \'my-entry\', order: 100, label: \'My entry\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
     source: 'packages/client/ui-settings/src/client/contract/slots.ts:65',
@@ -6039,7 +6044,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'sub2api.account.brand\', () => ctx.slots.register(\n      { name: \'sub2api.account.brand\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/credentials/sub2api-account/src/client/AccountSection.tsx:62',
+    source: 'packages/credentials/sub2api-account/src/client/AccountSection.tsx:72',
   },
   {
     key: 'tool.call.images',

@@ -25,8 +25,10 @@ export function invoiceInput(): InvoiceRequest {
     ] }
 }
 
-/** @returns a scoped account and synthetic feature controls, released by accountFixture. */
-export async function platformFixture() {
+/** @param checkout - Platform checkout configuration returned to this account.
+ * @returns a scoped account and synthetic feature controls, released by accountFixture.
+ */
+export async function platformFixture(checkout = checkoutRecord) {
   let gateways: Array<{ name: string; endpoint: string; description: string }> = []
   let failure: { path: string; status: number; reason: string } | undefined
   let paymentMode: 'url' | 'qr' | 'stripe' = 'url'
@@ -56,7 +58,7 @@ export async function platformFixture() {
       json(res, { data: [{ b64_json: pixel }] }, false); return true
     }
     if (path === '/api/v1/desktop/payment/config') { json(res, { enabled: true }); return true }
-    if (path === '/api/v1/desktop/payment/checkout-info') { json(res, checkoutRecord); return true }
+    if (path === '/api/v1/desktop/payment/checkout-info') { json(res, checkout); return true }
     if (path === '/api/v1/desktop/subscriptions') {
       json(res, { subscriptions: [{ id: 5, group_id: 4, group_name: 'Images', status: 'active',
         daily_used_usd: 1, daily_limit_usd: 4, monthly_used_usd: 5, monthly_limit_usd: 100 },

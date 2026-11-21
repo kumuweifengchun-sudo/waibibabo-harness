@@ -8,7 +8,7 @@ import { useEffect, useState } from 'react'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import {
-  IconChevronDownOutlineRegular, Menu, RiskConfirmation,
+  IconChevronDownOutlineRegular, InfoTip, Menu, RiskConfirmation,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PermissionSettingsState } from './settings-store.ts'
 import type { PermissionSettingsKey } from './locales.ts'
@@ -61,14 +61,14 @@ export function PermissionRow({ load, select, usePermission, t }: PermissionRowP
   const optionLabel = (option: PermissionSettingsState['options'][number]): string =>
     displayPermissionPreset(option.id, option.label, t)
   const label = selected !== undefined ? optionLabel(selected) : (busy ? t('loading') : t('unavailable'))
-  const description: string = state.error ?? t('description')
+  const title = t('title')
 
   return (
     <>
       <div className={css.row}>
         <div className={css.rowText}>
-          <div className={css.title}>{t('title')}</div>
-          <div className={css.desc} role={state.error === null ? undefined : 'alert'}>{description}</div>
+          <div className={css.title}>{title}<InfoTip label={t('helpFor', { topic: title })} text={t('description')} /></div>
+          {state.error !== null && <div className={css.desc} role="alert">{state.error}</div>}
         </div>
         <Menu
           open={open}

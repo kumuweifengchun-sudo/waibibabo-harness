@@ -29,7 +29,7 @@ kind: "package-bundle"
 
 桌面端通过其管理的 `desktop` 配置自动组合此包。默认平台地址为 `https://www.waibibabo.com`。`WAIBIBABO_PLATFORM_ORIGIN` 可指定其他源站；本地 HTTP 开发还需设置 `WAIBIBABO_ALLOW_LOOPBACK_HTTP=1`。平台网站和网关应保持在该源站下。
 
-账号页面支持邮箱密码、可选双重验证、浏览器授权，以及余额和用量刷新；分组、协议、全局容量与逐模型覆盖位于模型设置。主界面使用彩色图标；侧栏账号展示自动更新的额度。账号包定义[登录与凭据行为](../../credentials/sub2api-account/README.md)。[桌面升级指南](../../../docs/upgrade-guide/v0.2.2-rc.1/waibibabo-desktop/guide.md) 说明安装标识和数据目录。
+账号页面支持邮箱密码、可选双重验证、浏览器授权，以及余额和用量刷新。「模型」设置专用于平台账号，首个功能区是模型分组，可在此选择分组和请求协议，下方可调整容量和推理线路。主界面使用彩色图标，侧栏账号展示自动更新的额度。账号包定义[登录与凭据行为](../../credentials/sub2api-account/README.md)。[桌面升级指南](../../../docs/upgrade-guide/v0.2.2-rc.1/waibibabo-desktop/guide.md) 说明安装标识和数据目录。
 
 <a id="understand-the-implementation"></a>
 ## 理解实现

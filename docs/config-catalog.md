@@ -681,10 +681,12 @@ export type OnboardingProcess = 'compact' | 'standard' | 'detailed'
 - `source`: [`packages/client/ui-settings-models/src/onboarding-config.ts:6`](../packages/client/ui-settings-models/src/onboarding-config.ts)
 
 ```ts config-catalog
-/** Onboarding options after schema defaults are applied. */
+/** Models page and onboarding options after schema defaults are applied. */
 export interface Config {
   /** Offer the browser API-key step when no native shell owns credential onboarding. */
   credentialOnboarding: boolean
+  /** Display the built-in provider directory and its API-key and add-provider controls. */
+  showProviderSettings: boolean
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-client-ui-settings-models -->
@@ -3788,6 +3790,8 @@ export interface Config {
   responsesFallbackCooldownMs?: number
   /** Product name shown in the account page and browser consent. */
   productName: string
+  /** Short product name for provider headings in model pickers. Defaults to the product name. */
+  productShortName?: string
   /** Permit plain HTTP only for numeric loopback development origins. */
   allowLoopbackHttp?: boolean
   /** Bound each platform request, in milliseconds. */

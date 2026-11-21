@@ -124,14 +124,10 @@ export interface SettingsHeaderOwnerProps {
   children?: never
 }
 
-/**
- * Owner share of a settings section entry. The shell owns modal visibility
- * and navigation; a section's data arrives through its own inject faces and
- * stores. `close` is the one shell affordance a section receives, for flows
- * that leave settings altogether (starting a session from a section) — the
- * onboarding coordinator's `openSection`/`complete` precedent, inverted.
- */
+/** Shell navigation and dismissal actions available to the active settings section. */
 export interface SettingsSectionOwnerProps {
+  /** Open another registered section within the same settings panel. */
+  selectSection?: (id: string) => void
   /** Close the settings panel (the shell owns the open state). */
   close: () => void
 }

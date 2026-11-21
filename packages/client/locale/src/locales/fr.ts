@@ -3,6 +3,7 @@ import type { en } from './en.ts'
 
 /** Complete French copy for the common namespace. */
 export const fr = {
+  'helpFor': 'À propos de {topic}',
   'ok': 'OK',
   'cancel': 'Annuler',
   'close': 'Fermer',

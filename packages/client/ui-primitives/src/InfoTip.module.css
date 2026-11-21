@@ -1,0 +1,13 @@
+button.icon {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  margin-inline-start: 3px;
+  vertical-align: middle;
+  color: var(--dsw-alias-label-secondary);
+}
+
+@media (pointer: coarse) {
+  button.icon { width: 32px; height: 32px; }
+}

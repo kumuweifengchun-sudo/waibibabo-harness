@@ -39,6 +39,8 @@ import styles from './ModelsSection.module.css'
 
 /** Injected dependencies of {@link ModelsSection} (slot `inject`). */
 export interface ModelsSectionInjected {
+  /** False opens the contributed model settings without loading the provider directory. */
+  showProviderSettings?: boolean
   /** The page store (loaded on mount, refreshed on pushed invalidations). */
   controller: ModelsSettingsStore
   hooks: {
@@ -231,12 +233,13 @@ export function providerCopy(template: string, target: ProviderIdentity): string
 }
 
 /**
- * Render the Models section content column.
+ * Render the configured Models page, including its extensions.
  * @param props - slot-delivered injected dependencies.
- * @returns the section, or null while the shell has not injected yet.
+ * @returns the contributed controls alone or the provider editor with its extensions.
  */
 export function ModelsSection(props: ModelsSectionProps): ReactNode {
   const { controller, useSnapshot, operations, schema, t, renderSlot } = props
+  if (props.showProviderSettings === false) return renderSlot('settings.models.footer', {})
   if (
     controller === undefined || useSnapshot === undefined || operations === undefined
     || schema === undefined || t === undefined

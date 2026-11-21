@@ -1,6 +1,6 @@
 /** Desktop channel selection; persistence and updater transitions remain in Electron. */
 import { useState } from 'react'
-import { Menu, Toast, IconWarningOutlineRegular, IconLoadingOutlineRegular, IconChevronDownOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import { InfoTip, Menu, Toast, IconWarningOutlineRegular, IconLoadingOutlineRegular, IconChevronDownOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { DesktopChannelSource } from './desktop-channel-source.ts'
 import type { DesktopUpdateChannel } from '../types.ts'
@@ -23,10 +23,10 @@ export function DesktopChannelRow({ useChannel, select, t }:
   const [open, setOpen] = useState(false)
   const busy = pending !== undefined || state?.changing === true
   const channel = pending ?? state?.channel
-  return <div className={css.row} role="group" aria-label={t('desktop.channel.title')}>
+  const title = t('desktop.channel.title')
+  return <div className={css.row} role="group" aria-label={title}>
     <div className={css.rowText}>
-      <div className={css.title}>{t('desktop.channel.title')}</div>
-      <div className={css.description}>{t('desktop.channel.description')}</div>
+      <div className={css.title}>{title}<InfoTip label={t('helpFor', { topic: title })} text={t('desktop.channel.description')} /></div>
       {(failed || state?.error !== undefined) && <div role="alert">{t(failed ? 'desktop.channel.readError' : 'desktop.channel.error')}</div>}
     </div>
     <Menu open={open} onClose={() => { setOpen(false) }} portal align="end"

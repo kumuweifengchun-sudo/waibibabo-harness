@@ -1,6 +1,6 @@
 import { createServer } from 'node:http'
 import { afterEach, expect, it } from 'vitest'
-import { pixel, invoiceFileId, invoiceInput, platformFixture } from './platform-fixture.ts'
+import { checkoutRecord, pixel, invoiceFileId, invoiceInput, platformFixture } from './platform-fixture.ts'
 import type { GatewayId, ImageReferenceId, InvoiceFileId, PaymentOrderId, Sub2apiGroupId, SubscriptionPlanId } from '../src/types.ts'
 
 const close: Array<() => Promise<void>> = []
@@ -73,6 +73,26 @@ it('sends reference bytes to the editing endpoint with only the selected group l
   f.fail('/v1/images/edits', 500)
   expect(await f.account.generateImages(input)).toMatchObject({ ok: false, error: 'uncertain' })
   expect(f.requests.filter(request => request.path === '/v1/images/edits')).toHaveLength(2)
+})
+
+it('sends the selected Alipay channel for a native recharge and excludes exhausted channel capacity', async () => {
+  const limits = { ...checkoutRecord.methods.alipay, sort_order: 1, daily_limit: 100, daily_remaining: 50, available: true }
+  const checkout = { ...checkoutRecord, payment_channels: [
+    { ...limits, channel_id: '7', channel_name: '停用渠道', daily_remaining: 0, available: false },
+    { ...limits, channel_id: '9', channel_name: '支付宝二号' },
+  ] }
+  const f = await platformFixture(checkout)
+  const result = await f.account.getCheckout()
+  if (!result.ok) throw new Error('checkout unavailable')
+  expect(result.data.methods).toMatchObject([{ channelId: '7', available: false }, { channelId: '9', available: true, maximum: 50 }])
+  const selected = result.data.methods[1]!
+  if (!selected.channelId) throw new Error('selected channel missing')
+  const order = await f.account.createOrder({ kind: 'balance', amount: 12, method: selected.id, channelId: selected.channelId, planId: null })
+  expect(order.ok).toBe(true)
+  expect(f.requests.find(request => request.path === '/api/v1/desktop/payment/orders')?.body).not.toHaveProperty('return_url')
+  expect(f.requests.find(request => request.path === '/api/v1/desktop/payment/orders')?.body).toMatchObject({
+    order_type: 'balance', amount: 12, payment_type: 'alipay', channel_id: '9',
+  })
 })
 
 it('uses the website checkout, owned order verification and supported payment destinations', async () => {
