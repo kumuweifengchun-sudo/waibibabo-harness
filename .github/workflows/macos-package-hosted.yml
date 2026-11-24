@@ -30,12 +30,12 @@ concurrency:
 
 jobs:
   package:
-    name: macOS ${{ matrix.arch }} / unsigned
+    name: macOS x64 / ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
-        arch: ${{ fromJSON(inputs.architecture == 'all' && '["arm64","x64"]' || format('["{0}"]', inputs.architecture)) }}
-    runs-on: ${{ matrix.arch == 'arm64' && 'macos-15' || 'macos-15-intel' }}
+        runner: [macos-15, macos-26-intel]
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 180
     defaults:
       run:
@@ -43,7 +43,7 @@ jobs:
     env:
       DSH_TELEMETRY_DISABLED: '1'
       DSH_DESKTOP_TARGET_PLATFORM: darwin
-      DSH_DESKTOP_TARGET_ARCH: ${{ matrix.arch }}
+      DSH_DESKTOP_TARGET_ARCH: x64
       PACKAGE_VERSION_MODE: ${{ inputs.version_mode }}
       PACKAGE_BUILD_VERSION: ${{ inputs.build_version }}
     steps:
@@ -51,6 +51,7 @@ jobs:
         id: checkout
         with:
           persist-credentials: false
+          ref: 88d9ae124bcb6f215cdb82d50fbc6ec84d01c46c
 
       - uses: pnpm/action-setup@v5.0.0
         with:
@@ -60,6 +61,14 @@ jobs:
         with:
           node-version: '24'
           cache: pnpm
+
+      - name: Check Rosetta execution
+        if: runner.arch == 'ARM64'
+        run: |
+          if ! arch -x86_64 /usr/bin/true; then
+            sudo softwareupdate --install-rosetta --agree-to-license
+          fi
+          arch -x86_64 /usr/bin/true
 
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
@@ -82,17 +91,17 @@ jobs:
         run: pnpm run "package:desktop:mac:${DSH_DESKTOP_TARGET_ARCH}:unsigned" --build-version "$PACKAGE_VERSION"
 
       - name: Record installer checksums
-        working-directory: apps/desktop/.desktop-build/targets/mac-${{ matrix.arch }}/unsigned-artifacts
+        working-directory: apps/desktop/.desktop-build/targets/mac-x64/unsigned-artifacts
         run: shasum -a 256 ./*.dmg > SHA256SUMS.txt
 
       # Upload packaged archives; uploading the expanded .app would lose Unix file metadata.
       - name: Upload unsigned installers
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: waibibabo-macos-${{ matrix.arch }}-${{ steps.settings.outputs.version }}-unsigned
+          name: waibibabo-macos-x64-${{ steps.settings.outputs.version }}-unsigned-${{ matrix.runner }}
           path: |
-            apps/desktop/.desktop-build/targets/mac-${{ matrix.arch }}/unsigned-artifacts/*.dmg
-            apps/desktop/.desktop-build/targets/mac-${{ matrix.arch }}/unsigned-artifacts/SHA256SUMS.txt
+            apps/desktop/.desktop-build/targets/mac-x64/unsigned-artifacts/*.dmg
+            apps/desktop/.desktop-build/targets/mac-x64/unsigned-artifacts/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 14
 
@@ -101,7 +110,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: macos-hosted-${{ matrix.arch }}-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          name: macos-hosted-x64-${{ matrix.runner }}-logs-${{ github.run_id }}-${{ github.run_attempt }}
           path: apps/desktop/.desktop-build/packaging-runs/
           include-hidden-files: true
           if-no-files-found: warn
