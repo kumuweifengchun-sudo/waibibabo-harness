@@ -8,7 +8,7 @@ import { registerFileMenus } from './context-menus.tsx'
 import { zh, en, ja, es, fr, de, ru, pt, type FileActionKey } from './locales.ts'
 import { BrowserFileActions } from './files.ts'
 
-export type { FileActions, FileActionSource, FileSaveResult } from '../types.ts'
+export type { FileActions, FileActionSource, FileSaveResult, GeneratedImageDownloads } from '../types.ts'
 declare module '@deepseek-ai/cordis' {
   interface Context { /** Original-file saving and image clipboard commands. */ fileActions: FileActions }
 }

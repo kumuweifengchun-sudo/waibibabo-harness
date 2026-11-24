@@ -1,6 +1,6 @@
 /** Original-byte transfer, platform save selection, and pasteable image encoding. */
 import { resolveDragFileName } from '@deepseek-ai/dsh-util-file-drag'
-import type { DesktopFileActions, FileActions, FileActionSource, FileSaveResult } from '../types.ts'
+import type { DesktopFileActions, FileActions, FileActionSource, FileSaveResult, GeneratedImageDownloads } from '../types.ts'
 
 /**
  * Keep compatible filename suffixes and repair known MIME conflicts without changing bytes.
@@ -17,8 +17,10 @@ export class BrowserFileActions implements FileActions {
   private downloadUrl: string | undefined
   private readonly lifetime = new AbortController()
   readonly canSaveAs: boolean
+  readonly generatedImages: GeneratedImageDownloads | undefined
   constructor(private readonly desktop: DesktopFileActions | undefined) {
     this.canSaveAs = desktop !== undefined
+    this.generatedImages = desktop?.generatedImages
   }
   private async read(source: FileActionSource): Promise<Blob> {
     this.lifetime.signal.throwIfAborted()
@@ -34,7 +36,7 @@ export class BrowserFileActions implements FileActions {
     if (!response.ok) throw new Error('Original file unavailable')
     return response.blob()
   }
-  async save(source: FileActionSource, mode: 'download' | 'saveAs'): Promise<FileSaveResult> {
+  async save(source: FileActionSource, mode: 'download' | 'saveAs', destination?: 'generatedImages'): Promise<FileSaveResult> {
     this.lifetime.signal.throwIfAborted()
     if (this.desktop !== undefined) {
       const blob = source.read === undefined ? undefined : await source.read(this.lifetime.signal)
@@ -42,6 +44,7 @@ export class BrowserFileActions implements FileActions {
       const url = blob === undefined ? source.url : URL.createObjectURL(blob)
       try {
         const result = await this.desktop.save({ url, mode,
+          ...(destination === 'generatedImages' && mode === 'download' && this.generatedImages ? { destination } : {}),
           ...(source.name === undefined ? {} : { name: source.name }),
           ...(blob?.type || source.mediaType ? { mediaType: blob?.type || source.mediaType } : {}),
         })

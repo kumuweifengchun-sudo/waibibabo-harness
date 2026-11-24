@@ -33,7 +33,7 @@ Web 应用 bundle 无配置字段地挂载此客户端插件。使用方导入 `
 
 `save(source, mode)` 返回取消状态 `cancelled`、浏览器下载已请求状态 `requested`，或原生保存完成后的 `saved` 及目标绝对路径 `path`。Web 的文件和图片菜单提供「下载」，不显示「另存为」。Web 下载将原始内容和建议文件名交给浏览器，由浏览器负责保存位置和完成状态，不返回本机路径。「另存为」仅限 Desktop：Web 的 `canSaveAs` 为 false，调用 `saveAs` 会在读取来源前拒绝。
 
-Desktop 完成提示提供「在文件夹显示」文字操作（macOS 为「在 Finder 显示」），捕获该次操作的目标路径。该操作调用 `session.openWorkspacePath`，复用现有 Host 路径校验，不保留下载历史或独立的 reveal IPC。右键菜单中的定位由 `ui-open-in-app` 提供，始终针对原本就在本地的文件，不受此前保存影响。
+Desktop 完成提示提供「在文件夹显示」文字操作（macOS 为「在 Finder 显示」），捕获该次操作的目标路径。该操作调用 `session.openWorkspacePath`，复用现有 Host 路径校验，不保留下载历史或独立的 reveal IPC。右键菜单中的定位由 `ui-open-in-app` 提供，始终针对原本就在本地的文件，不受此前保存影响。Desktop 生图页面使用独立的下载位置，并可定位当前窗口已保存完成的图片。
 
 文件名与 MIME 规范化复用文件拖动工具，因此保存与拖动采用相同的原始格式和文件名规则。
 

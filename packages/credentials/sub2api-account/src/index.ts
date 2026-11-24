@@ -24,11 +24,11 @@ import { usagePage, usageParameters } from './usage.ts'
 import { detectGateway, gatewayEndpoints, type GatewayRoute } from './gateways.ts'
 import { ResponsesTransport } from './responses-transport.ts'
 import { imageRequest, imageResult } from './images.ts'
-import { checkoutView, orderPage, orderRequest, paymentLaunch, paymentOrder, platformId, platformPageQuery, subscriptions } from './commerce.ts'
+import { checkoutView, orderPage, orderRequest, paymentLaunch, paymentOrder, platformId, platformPageQuery, rechargeBatch, rechargeBatchOffer, rechargeBatchRequest, rechargeBatches, rechargeQuoteBody, subscriptions } from './commerce.ts'
 import { invoiceAmount, invoiceDownload, invoiceForm, invoicePage, invoiceQuote, invoiceView } from './invoices.ts'
 import type { CheckoutView, GatewayEndpoint, GatewayId, GatewayView, ImageRequest, ImageResult, InvoiceFileId, InvoiceId, InvoicePage,
   InvoiceQuote, InvoiceRequest, InvoiceView, OrderPage, OrderRequest, PaymentLaunch, PaymentOrder, PaymentOrderId, PlatformFile,
-  PlatformPageQuery, PlatformResult, SubscriptionView } from './platform-types.ts'
+  PaymentChannelId, PlatformPageQuery, PlatformResult, RechargeBatch, RechargeBatchAction, RechargeBatchId, RechargeOffer, SubscriptionView } from './platform-types.ts'
 import type { AccountConnectionView, AccountFailure, AccountView, ModelLimits, ModelProtocolChoice, ModelTransport, Sub2apiGroupId, Sub2apiUserId, UsageQuery, UsageResult } from './types.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -409,9 +409,14 @@ export class Sub2apiAccount extends TypertRemoteService {
       defaultContextWindow: effectiveContextWindow(limits), defaultMaxTokens: limits.maxOutputTokens,
       models: protocols.map(({ source: model, effective }) => {
         const choices = this.session?.modelLimitOverrides?.[this.view.selectedGroup ?? '']
-        const budget = choices !== undefined && Object.hasOwn(choices, model.id) ? choices[model.id] ?? limits : limits
+        const override = choices !== undefined && Object.hasOwn(choices, model.id) ? choices[model.id] : undefined
+        const defaults = this.session?.modelLimits
+        const contextWindow = model.context_window ?? effectiveContextWindow(limits)
+        const maxTokens = Math.min(model.max_output_tokens ?? limits.maxOutputTokens, Math.max(1, contextWindow - 1))
+        const manual = override ?? defaults
         return { id: model.id, api: effective, baseURL: protocolBaseURL(inferenceOrigin, effective),
-          input: ['text', 'image'], contextWindow: effectiveContextWindow(budget), maxTokens: budget.maxOutputTokens }
+          input: ['text', 'image'], contextWindow: manual ? effectiveContextWindow(manual) : contextWindow,
+          maxTokens: manual?.maxOutputTokens ?? maxTokens }
       }),
     } })
     this.catalog = result.data
@@ -819,13 +824,17 @@ export class Sub2apiAccount extends TypertRemoteService {
   /** Refresh one order and optionally ask its provider to verify payment.
    * @param id - Owned order identifier.
    * @param verify - Query the payment provider through the platform.
+   * @param ledger - Explicitly request Alipay reconciliation for an owned Alipay order.
    * @returns authoritative order state; a browser return alone never marks payment successful.
    */
   @Remote
-  getOrder(id: PaymentOrderId, verify: boolean): Promise<PlatformResult<PaymentOrder>> {
+  getOrder(id: PaymentOrderId, verify: boolean, ledger?: boolean): Promise<PlatformResult<PaymentOrder>> {
     return this.feature(async () => {
       const order = paymentOrder(await this.authenticated('/api/v1/desktop/payment/orders/' + platformId(id)))
-      return verify ? paymentOrder(await this.authenticated('/api/v1/desktop/payment/orders/verify', { out_trade_no: order.number })) : order
+      if (!verify) return order
+      if (ledger && !['alipay', 'alipay_direct'].includes(order.method)) throw new AccountError('validation')
+      const path = ledger ? '/verify-alipay-ledger' : '/verify'
+      return paymentOrder(await this.authenticated('/api/v1/desktop/payment/orders' + path, { out_trade_no: order.number }))
     })
   }
 
@@ -836,6 +845,41 @@ export class Sub2apiAccount extends TypertRemoteService {
   @Remote
   cancelOrder(id: PaymentOrderId): Promise<PlatformResult<null>> {
     return this.feature(async () => { await this.authenticated('/api/v1/desktop/payment/orders/' + platformId(id) + '/cancel', {}); return null }, true)
+  }
+
+  /** Price a split recharge before creating a batch.
+   * @param amountCents - Requested balance recharge in minor currency units.
+   * @param channel - Selected Alipay channel.
+   * @returns a server quote with no order created.
+   */
+  @Remote
+  quoteRechargeBatch(amountCents: number, channel: PaymentChannelId): Promise<PlatformResult<RechargeOffer>> {
+    return this.feature(async () => rechargeBatchOffer(await this.authenticated(
+      '/api/v1/desktop/payment/recharge-batches/quote', rechargeQuoteBody(amountCents, channel))))
+  }
+
+  /** Read the current account's recent recharge batches.
+   * @param before - Optional exclusive cursor.
+   * @param signal - Client cancellation.
+   * @returns the most recent owned batches before the cursor.
+   */
+  @Remote
+  getRechargeBatches(before?: RechargeBatchId, signal?: AbortSignal): Promise<PlatformResult<readonly RechargeBatch[]>> {
+    return this.feature(async () => rechargeBatches(await this.authenticated(
+      '/api/v1/desktop/payment/recharge-batches' + (before === undefined ? '' : '?before_id=' + platformId(before)), undefined, signal),
+    this.issuer))
+  }
+
+  /** Read or update an owned recharge batch.
+   * @param action - Explicit operation for an owned recharge batch.
+   * @returns current progress. Confirmation retries reuse the same request key.
+   */
+  @Remote
+  updateRechargeBatch(action: RechargeBatchAction): Promise<PlatformResult<RechargeBatch>> {
+    return this.feature(async () => {
+      const { suffix, body } = rechargeBatchRequest(action)
+      return rechargeBatch(await this.authenticated('/api/v1/desktop/payment/recharge-batches' + suffix, body), this.issuer)
+    }, action.kind !== 'refresh')
   }
 
   /** List user-owned invoice applications.

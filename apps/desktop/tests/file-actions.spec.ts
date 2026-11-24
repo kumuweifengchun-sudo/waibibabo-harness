@@ -10,6 +10,7 @@ import { DESKTOP_IPC } from '../src/ipc.ts'
 
 const electron = vi.hoisted(() => ({
   app: { getPath: vi.fn() }, ipcMain: { handle: vi.fn() }, session: { defaultSession: { on: vi.fn() } },
+  dialog: { showOpenDialog: vi.fn() }, shell: { showItemInFolder: vi.fn() },
 }))
 vi.mock('electron', () => electron)
 const roots: string[] = []
@@ -63,6 +64,32 @@ it('returns the completed destination and releases download listeners', async ()
   await expect(f.save()).resolves.toEqual({ status: 'saved', path: join(root, 'image.gif') })
   expect(f.owner.listenerCount('closed')).toBe(0)
   expect(f.owner.webContents.listenerCount('did-start-navigation')).toBe(0)
+})
+
+it('persists the generated-image directory and reveals only a completed image', async () => {
+  const root = await directory(), images = await directory(), f = harness(root)
+  await expect(f.invoke(DESKTOP_IPC.generatedImageDirectory, undefined)).resolves.toBe(root)
+  electron.dialog.showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [images] })
+  await expect(f.invoke(DESKTOP_IPC.generatedImageDirectoryChoose, undefined)).resolves.toBe(images)
+  expect(await readFile(join(root, 'desktop', 'generated-image-downloads.json'), 'utf8')).toBe(JSON.stringify(images) + '\n')
+  electron.dialog.showOpenDialog.mockResolvedValueOnce({ canceled: true, filePaths: [] })
+  await expect(f.invoke(DESKTOP_IPC.generatedImageDirectoryChoose, undefined)).resolves.toBeNull()
+  await expect(f.invoke(DESKTOP_IPC.generatedImageDirectory, undefined)).resolves.toBe(images)
+  await expect(f.save()).resolves.toEqual({ status: 'saved', path: join(root, 'image.gif') })
+  await expect(f.invoke(DESKTOP_IPC.generatedImageReveal, join(root, 'image.gif'))).rejects.toThrow('Saved image unavailable')
+  const launched = Promise.withResolvers<string>()
+  f.owner.webContents.downloadURL.mockImplementationOnce(launched.resolve)
+  const pending = f.invoke(DESKTOP_IPC.fileSave, { url: 'https://images.example/a', mode: 'download', destination: 'generatedImages' })
+  const download = f.item('image/gif', await launched.promise)
+  const path = join(images, 'original.gif')
+  expect(download.setSavePath).toHaveBeenCalledWith(path)
+  await expect(f.invoke(DESKTOP_IPC.generatedImageReveal, path)).rejects.toThrow('Saved image unavailable')
+  download.emit('done', {}, 'completed')
+  await expect(pending).resolves.toEqual({ status: 'saved', path })
+  await expect(f.invoke(DESKTOP_IPC.generatedImageReveal, path)).resolves.toBeUndefined()
+  expect(electron.shell.showItemInFolder).toHaveBeenCalledExactlyOnceWith(path)
+  await rm(path)
+  await expect(f.invoke(DESKTOP_IPC.generatedImageReveal, path)).rejects.toThrow()
 })
 
 it.each(['file:///private/data', 'dsh-app://app/api/private', 'javascript:alert(1)'])('rejects unsupported URL %s', async (url) => {

@@ -125,6 +125,7 @@ export class ResponsesTransport {
       for (const name of ['content-length', 'content-type', 'connection', 'upgrade', 'accept-encoding']) headers.delete(name)
       headers.set('OpenAI-Beta', 'responses_websockets=2026-02-06')
       headers.set('x-wss-transport-fallback', 'sse')
+      headers.set('x-wss-transport-reconnect', '1')
       const route = digest([url.href, [...headers]])
       const cooldown = this.cooldowns.get(route)
       if (cooldown !== undefined && cooldown > Date.now()) return fetch(request, { signal })
@@ -141,16 +142,24 @@ export class ResponsesTransport {
         return fetch(request, { signal })
       }
       const key = session === undefined ? undefined : digest([session, route])
-      let connection: Connection
-      try { connection = await this.acquire(url, headers, key, signal) } catch (error) {
-        this.assertActive(signal)
-        if (!(error instanceof HandshakeFailure)) throw error
-        if (error.status !== undefined && ![200, 400, 404, 405, 426, 500, 501, 502, 503, 504].includes(error.status)) {
-          return Response.json({ error: { message: 'WS 授权或配额检查未通过，请检查平台账号与使用限制' } }, { status: error.status })
+      const attempt = async (allowReconnect: boolean): Promise<Response | 'reconnect'> => {
+        let connection: Connection
+        try { connection = await this.acquire(new URL(url), headers, key, signal, allowReconnect) } catch (error) {
+          this.assertActive(signal)
+          if (!(error instanceof HandshakeFailure)) throw error
+          if (error.status !== undefined && ![200, 400, 404, 405, 426, 500, 501, 502, 503, 504].includes(error.status)) {
+            return Response.json({ error: { message: 'WS 授权或配额检查未通过，请检查平台账号与使用限制' } }, { status: error.status })
+          }
+          return fallback()
         }
-        return fallback()
+        return this.response(connection, body, signal, fallback, unavailable, allowReconnect, reportFailure)
       }
-      return this.response(connection, body, signal, fallback, unavailable, reportFailure)
+      const first = await attempt(true)
+      if (first !== 'reconnect') return first
+      this.assertActive(signal)
+      const next = await attempt(false)
+      if (next === 'reconnect') throw new Error('WS reconnect limit reached')
+      return next
     }
   }
 
@@ -173,10 +182,10 @@ export class ResponsesTransport {
     await Promise.all(closing.map(connection => connection.closed))
   }
 
-  private async acquire(url: URL, headers: Headers, key: string | undefined, signal: AbortSignal): Promise<Connection> {
+  private async acquire(url: URL, headers: Headers, key: string | undefined, signal: AbortSignal, reuse: boolean): Promise<Connection> {
     this.assertActive(signal)
     const cached = key === undefined ? undefined : this.pool.get(key)
-    if (cached !== undefined && !cached.busy && cached.socket.readyState === WebSocket.OPEN) {
+    if (reuse && cached !== undefined && !cached.busy && cached.socket.readyState === WebSocket.OPEN) {
       cached.busy = true
       clearTimeout(cached.idle)
       try {
@@ -265,9 +274,10 @@ export class ResponsesTransport {
   }
 
   private async response(connection: Connection, body: Body, signal: AbortSignal,
-    fallback: () => Promise<Response>, unavailable: () => void, reportFailure?: (failure: LlmError) => void): Promise<Response> {
+    fallback: () => Promise<Response>, unavailable: () => void, allowReconnect: boolean,
+    reportFailure?: (failure: LlmError) => void): Promise<Response | 'reconnect'> {
     const socket = connection.socket
-    const ready = Promise.withResolvers<'ws' | 'http'>()
+    const ready = Promise.withResolvers<'ws' | 'http' | 'reconnect'>()
     let cancel = () => { this.release(connection, false) }
     const initial = frame(body, this.options.responsesIncrementalHistory ? connection.continuation : undefined)
     const stream = new ReadableStream<Uint8Array>({
@@ -275,14 +285,14 @@ export class ResponsesTransport {
         let settled = false
         let observed = false
         let recovered = false
-        const finish = (error?: Error, outcome: 'complete' | 'error' | 'cancelled' | 'fallback' = 'error') => {
+        const finish = (error?: Error, outcome: 'complete' | 'error' | 'cancelled' | 'fallback' | 'reconnect' = 'error') => {
           if (settled) return
           settled = true
           socket.off('message', message); socket.off('close', closed); socket.off('error', lost)
           signal.removeEventListener('abort', aborted)
           if (outcome !== 'cancelled') { if (error) controller.error(error); else controller.close() }
           this.release(connection, outcome === 'complete')
-          ready.resolve(outcome === 'fallback' ? 'http' : 'ws')
+          ready.resolve(outcome === 'fallback' ? 'http' : outcome === 'reconnect' ? 'reconnect' : 'ws')
         }
         const aborted = () => { finish(new DOMException('Request aborted', 'AbortError')) }
         const interrupted = (detail: string, transient = true) => {
@@ -297,6 +307,13 @@ export class ResponsesTransport {
         }
         const closed = (code: number, reason: Buffer) => {
           const detail = reason.toString('utf8').replace(/[\r\n\t]/gu, ' ').trim()
+          if (code === 1013 && detail === 'wss_account_quota_reconnect') {
+            if (!observed && allowReconnect && body.previous_response_id == null && !signal.aborted && !this.disposed) {
+              if (connection.key !== undefined && this.pool.get(connection.key) === connection) this.pool.delete(connection.key)
+              finish(undefined, 'reconnect')
+            } else interrupted(detail, false)
+            return
+          }
           interrupted(detail ? `${code}: ${detail}` : String(code), [1000, 1001, 1005, 1006, 1011, 1012, 1013].includes(code))
         }
         const lost = (error: unknown) => { interrupted(error instanceof Error ? error.message : '连接中断') }
@@ -359,6 +376,7 @@ export class ResponsesTransport {
       cancel: () => { cancel() },
     })
     const mode = await ready.promise
+    if (mode === 'reconnect') return mode
     return mode === 'http' ? fallback() : new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } })
   }
 }

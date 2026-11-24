@@ -1,10 +1,11 @@
 /** Client-memory state for the native platform pages; never written to browser storage. */
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
+import type { GeneratedImageDownloads } from '@deepseek-ai/dsh-client-ui-file-actions/client'
 import { randomUUID } from '@deepseek-ai/dsh-util-crypto'
 import type { AccountFailure, Sub2apiGroupId, Sub2apiUserId } from '../types.ts'
 import type { CheckoutView, GatewayId, GatewayView, ImageRequest, ImageResult, InvoiceFileId, InvoiceId,
   InvoicePage, InvoiceQuote, InvoiceRequest, InvoiceRequestKey, InvoiceView, OrderPage, OrderRequest, PaymentLaunch, PaymentOrder,
-  PaymentOrderId, PlatformPageQuery, SubscriptionView } from '../platform-types.ts'
+  PaymentChannelId, PaymentOrderId, PlatformPageQuery, RechargeBatch, RechargeBatchAction, RechargeBatchId, RechargeOffer, SubscriptionView } from '../platform-types.ts'
 import type { AccountInjected } from './AccountSection.tsx'
 
 /** Independently serialized operations so a slow image does not block account queries. */
@@ -34,6 +35,9 @@ export interface PlatformState {
   /** Cancellation attempts that require an authoritative read before further payment actions. */
   readonly pendingCancellationChecks: readonly PaymentOrderId[]
   readonly orderUncertain: boolean
+  readonly rechargeOffer: RechargeOffer | null
+  readonly rechargeBatches: readonly RechargeBatch[]
+  readonly rechargeBatch: RechargeBatch | null
   readonly invoices: InvoicePage | null
   readonly invoiceQuery: PlatformPageQuery
   readonly invoiceOpen: boolean
@@ -61,6 +65,7 @@ export function initialPlatformState(): PlatformState {
     imageModels: [], imageModelsGroup: null, imageSaves: {},
     checkout: null, subscriptions: [], orders: null, orderQuery: { page: 1, pageSize: 20, status: '' }, payment: null,
     paymentState: null, paymentDialog: null, pendingCancellationChecks: [], orderUncertain: false,
+    rechargeOffer: null, rechargeBatches: [], rechargeBatch: null,
     invoices: null, invoiceQuery: { page: 1, pageSize: 20, status: '' },
     invoiceOpen: false, invoice: null, invoiceDraft: newInvoiceDraft(), quote: null, invoiceSaved: false, invoiceUncertain: false }
 }
@@ -83,13 +88,20 @@ export interface PlatformInjected {
   loadImageModels: (group: Sub2apiGroupId) => Promise<void>
   generate: (input: ImageRequest) => Promise<void>
   saveImage: (id: import('../platform-types.ts').ImageOutputId) => Promise<void>
+  readonly generatedImageDownloads?: GeneratedImageDownloads
   loadBilling: (query?: PlatformPageQuery) => Promise<void>
   createPayment: (input: OrderRequest) => Promise<boolean>
   /** Open a history row or, when omitted, the most recently created checkout. */
   openPayment: (order?: PaymentOrder) => void
   closePayment: () => void
   refreshPayment: (id: PaymentOrderId) => Promise<void>
+  checkAlipayPayment: (id: PaymentOrderId, batch?: RechargeBatchId) => Promise<void>
   cancelPayment: (id: PaymentOrderId) => Promise<void>
+  quoteRecharge: (amountCents: number, channel: PaymentChannelId) => Promise<void>
+  loadRechargeBatches: (before?: RechargeBatchId) => Promise<void>
+  confirmRecharge: () => Promise<void>
+  updateRecharge: (action: Exclude<RechargeBatchAction, { kind: 'confirm' }>) => Promise<void>
+  closeRecharge: () => void
   loadInvoices: (query?: PlatformPageQuery) => Promise<void>
   openInvoice: (id: InvoiceId | null) => Promise<void>
   closeInvoice: () => void

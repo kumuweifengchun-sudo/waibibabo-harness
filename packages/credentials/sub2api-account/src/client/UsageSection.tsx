@@ -11,6 +11,9 @@ import { failureKeys } from './errors.ts'
 
 type SharedProps = PropsLocale<'sub2api.account'> & InjectFace<AccountInjected>
 const money = (value: number) => value.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const usageModes = [
+  ['ws_v2', 'usageWebSocket'], ['stream', 'usageHttpStream'], ['sync', 'usageNonStream'],
+] as const
 
 function UsageContent(props: SharedProps & { inDialog?: boolean }) {
   const { t, useUsage, useAccount, loadUsage } = props
@@ -38,9 +41,13 @@ function UsageContent(props: SharedProps & { inDialog?: boolean }) {
         <label>{t('usageGroup')}<select value={filters.groupId ?? ''} disabled={state.loading} onChange={(event) => {
           setFilters({ ...filters, groupId: event.target.value === '' ? null : event.target.value as Sub2apiGroupId })
         }}><option value="">{t('usageAll')}</option>{account?.groups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}</select></label>
-        <label>{t('usageMode')}<select value={filters.stream === null ? '' : String(filters.stream)} disabled={state.loading}
-          onChange={(event) => { setFilters({ ...filters, stream: event.target.value === '' ? null : event.target.value === 'true' }) }}>
-          <option value="">{t('usageAll')}</option><option value="true">{t('usageStream')}</option><option value="false">{t('usageNonStream')}</option>
+        <label>{t('usageMode')}<select value={filters.requestType ?? (filters.stream === null ? '' : filters.stream ? 'stream' : 'sync')} disabled={state.loading}
+          onChange={(event) => {
+            const { requestType: _previous, ...rest } = filters
+            const mode = usageModes.find(([value]) => value === event.target.value)
+            setFilters({ ...rest, stream: null, ...mode === undefined ? {} : { requestType: mode[0] } })
+          }}>
+          <option value="">{t('usageAll')}</option>{usageModes.map(([mode, label]) => <option key={mode} value={mode}>{t(label)}</option>)}
         </select></label>
         <label>{t('usagePageSize')}<select value={filters.pageSize} disabled={state.loading}
           onChange={(event) => { setFilters({ ...filters, pageSize: Number(event.target.value) }) }}>
@@ -88,7 +95,9 @@ function UsageContent(props: SharedProps & { inDialog?: boolean }) {
           <dt>{t('usageGroup')}</dt><dd>{selected.group ?? '—'}</dd>
           <dt>{t('usageKey')}</dt><dd>{selected.apiKey ?? '—'}</dd>
           <dt>{t('usageEndpoint')}</dt><dd>{selected.endpoint ?? '—'}</dd>
-          <dt>{t('usageMode')}</dt><dd>{t(selected.stream ? 'usageStream' : 'usageNonStream')}</dd>
+          <dt>{t('usageMode')}</dt><dd>{t(usageModes.find(([mode]) => mode === selected.requestType)?.[1]
+            ?? (selected.stream ? 'usageStream' : 'usageNonStream'))}</dd>
+          {selected.reasoningEffort && <><dt>{t('usageReasoningEffort')}</dt><dd>{selected.reasoningEffort}</dd></>}
           <dt>{t('usageFirstToken')}</dt><dd>{duration(selected.firstTokenMs)}</dd>
           <dt>{t('usageDuration')}</dt><dd>{duration(selected.durationMs)}</dd>
         </dl></PlatformPanel>
@@ -97,6 +106,8 @@ function UsageContent(props: SharedProps & { inDialog?: boolean }) {
           <dt>{t('usageOutput')}</dt><dd>{selected.outputTokens.toLocaleString('zh-CN')}</dd>
           <dt>{t('usageCacheRead')}</dt><dd>{selected.cacheReadTokens.toLocaleString('zh-CN')}</dd>
           <dt>{t('usageCacheWrite')}</dt><dd>{selected.cacheWriteTokens.toLocaleString('zh-CN')}</dd>
+          {selected.cacheWrite5mTokens !== undefined && <><dt>{t('usageCacheWrite5m')}</dt><dd>{selected.cacheWrite5mTokens.toLocaleString('zh-CN')}</dd></>}
+          {selected.cacheWrite1hTokens !== undefined && <><dt>{t('usageCacheWrite1h')}</dt><dd>{selected.cacheWrite1hTokens.toLocaleString('zh-CN')}</dd></>}
           <dt>{t('usageImages')}</dt><dd>{selected.imageCount}</dd>
         </dl></PlatformPanel>
         <PlatformPanel title={t('usageCostBreakdown')}><dl className={css.usageDetails}>

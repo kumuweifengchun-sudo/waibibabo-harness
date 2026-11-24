@@ -7,6 +7,7 @@ const querySchema = z.object({
   page: z.number().int().min(1).max(100000), pageSize: z.number().int().min(1).max(100),
   startDate: z.iso.date(), endDate: z.iso.date(), timezone: z.string().min(1).max(100),
   model: z.string().trim().max(256), groupId: z.string().regex(/^[1-9]\d*$/u).nullable(), stream: z.boolean().nullable(),
+  requestType: z.enum(['sync', 'stream', 'ws_v2']).optional(),
 })
 const count = z.number().int().nonnegative()
 const row = z.object({
@@ -14,6 +15,8 @@ const row = z.object({
   group: z.object({ name: z.string() }).nullish(), api_key: z.object({ name: z.string() }).nullish(),
   inbound_endpoint: z.string().nullish(), input_tokens: count, output_tokens: count,
   cache_read_tokens: count, cache_creation_tokens: count,
+  cache_creation_5m_tokens: count.optional(), cache_creation_1h_tokens: count.optional(),
+  reasoning_effort: z.string().nullish(), request_type: z.string().optional(),
   input_cost: z.number(), output_cost: z.number(), cache_read_cost: z.number(), cache_creation_cost: z.number(),
   total_cost: z.number(), actual_cost: z.number(), rate_multiplier: z.number(),
   duration_ms: z.number().nullable(), first_token_ms: z.number().nullable(), stream: z.boolean(), billing_type: z.number().int(),
@@ -38,7 +41,8 @@ export function usageParameters(input: UsageQuery): string {
     start_date: query.startDate, end_date: query.endDate, timezone: query.timezone, sort_by: 'created_at', sort_order: 'desc' })
   if (query.model) parameters.set('model', query.model)
   if (query.groupId !== null) parameters.set('group_id', query.groupId)
-  if (query.stream !== null) parameters.set('stream', String(query.stream))
+  if (query.requestType !== undefined) parameters.set('request_type', query.requestType)
+  else if (query.stream !== null) parameters.set('stream', String(query.stream))
   return parameters.toString()
 }
 
@@ -64,6 +68,10 @@ export function usagePage(pageValue: unknown, statsValue: unknown, statisticsErr
       totalCost: value.total_cost, actualCost: value.actual_cost, multiplier: value.rate_multiplier,
       durationMs: value.duration_ms, firstTokenMs: value.first_token_ms, stream: value.stream,
       billingType: value.billing_type, imageCount: value.image_count ?? 0,
+      ...value.request_type === undefined ? {} : { requestType: value.request_type },
+      ...value.reasoning_effort == null ? {} : { reasoningEffort: value.reasoning_effort },
+      ...value.cache_creation_5m_tokens === undefined ? {} : { cacheWrite5mTokens: value.cache_creation_5m_tokens },
+      ...value.cache_creation_1h_tokens === undefined ? {} : { cacheWrite1hTokens: value.cache_creation_1h_tokens },
     })),
   }
 }

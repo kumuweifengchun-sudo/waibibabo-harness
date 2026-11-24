@@ -28,6 +28,7 @@ export type { GatewayId, PaymentOrderId, PaymentChannelId, SubscriptionPlanId, I
   GatewayEndpoint, GatewayView, ImageRequest, ImageReference, ImageReferenceId, ImageUploadLimits, GeneratedImage, ImageResult,
   PaymentMethod, SubscriptionPlan,
   CheckoutView, OrderRequest, PaymentLaunch, PaymentOrder, OrderPage, PlatformPageQuery, SubscriptionView,
+  RechargeBatchId, RechargeBatch, RechargeBatchAction, RechargeOffer, RechargeQuote,
   InvoiceFile, InvoiceView, InvoicePage, InvoiceQuote, EvidenceFile, InvoiceRequest, PlatformFile } from './platform-types.ts'
 
 /** Server group identifier represented without number coercion on Remote calls. */
@@ -37,7 +38,7 @@ export type Sub2apiUserId = Branded<'Sub2apiUserId'>
 /** Failure categories localized by the account UI. */
 export type AccountFailure = 'network' | 'timeout' | 'server' | 'authorization' | 'credentials' | 'captcha' | 'two-factor' | 'protocol' | 'storage' | 'expired' | 'busy' | 'no-models' | 'revocation' | 'upgrade-required' | 'usage-filter' | 'validation' | 'unavailable' | 'uncertain' | 'conflict' | 'invoice-evidence' | 'gateway-unavailable' | 'account-line-unavailable' | 'insecure-gateway' | 'balance' | 'model-limits' | 'payment-gateway'
   | 'registration-input' | 'registration-code' | 'registration-expired' | 'registration-unknown' | 'email-code' | 'email-rate' | 'email-exists'
-  | 'email-domain' | 'payment-limit' | 'payment-return' | 'payment-channel' | 'payment-input'
+  | 'email-domain' | 'payment-limit' | 'payment-return' | 'payment-channel' | 'payment-input' | 'ledger-unavailable' | 'ledger-rate'
 /** Inference wire protocols implemented by the bundled adapter. */
 export type ModelProtocol = 'openai-completions' | 'openai-responses' | 'anthropic-messages' | 'google-generative-ai'
 /** A user override or automatic model-specific selection. */
@@ -123,6 +124,7 @@ export interface UsageQuery {
   readonly model: string
   readonly groupId: Sub2apiGroupId | null
   readonly stream: boolean | null
+  readonly requestType?: 'sync' | 'stream' | 'ws_v2'
 }
 /** User-visible usage fields; API credentials and upstream account details are excluded. */
 export interface UsageRecord {
@@ -147,6 +149,10 @@ export interface UsageRecord {
   readonly durationMs: number | null
   readonly firstTokenMs: number | null
   readonly stream: boolean
+  readonly requestType?: string
+  readonly reasoningEffort?: string
+  readonly cacheWrite5mTokens?: number
+  readonly cacheWrite1hTokens?: number
   readonly billingType: number
   readonly imageCount: number
 }

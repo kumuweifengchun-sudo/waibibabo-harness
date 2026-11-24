@@ -81,6 +81,7 @@ function ImageContent(props: PlatformProps) {
             {images.length > 0 && <span className={styles.resultCount}>{t('imageResultCount', { count: String(images.length) })}</span>}
           </div>
           <p className={styles.hint}>{t('imageMemory')}</p>
+          {props.generatedImageDownloads && <ImageDownloadDirectory downloads={props.generatedImageDownloads} t={t} />}
         </header>
         <PlatformNotice t={t} loading={false} error={state.errors.images} />
         {busy && images.length > 0 && <div className={styles.working} role="status">
@@ -112,7 +113,8 @@ function ImageContent(props: PlatformProps) {
                 <summary>{t('imageRevisedPrompt')}</summary><p>{image.revisedPrompt}</p>
               </details>}
               {save?.status === 'saving' && <progress aria-label={t('imageDownloading')} />}
-              {save?.status === 'saved' && <p role="status" className={styles.saveStatus}>{t('imageSaved', { path: save.path ?? '' })}</p>}
+              {save?.status === 'saved' && <SavedImage key={save.path} path={save.path ?? ''} t={t}
+                downloads={props.generatedImageDownloads} />}
               {save?.status === 'requested' && <p role="status" className={styles.saveStatus}>{t('imageDownloadRequested')}</p>}
               {save?.status === 'cancelled' && <p role="status" className={styles.saveStatus}>{t('imageDownloadCancelled')}</p>}
               {save?.status === 'failed' && <p role="alert" className={css.error}>{t('imageDownloadFailed')}</p>}
@@ -126,6 +128,61 @@ function ImageContent(props: PlatformProps) {
       {preview !== undefined && <img className={styles.imageFull} src={preview.source} alt={t('imageFullPreview')} referrerPolicy="no-referrer" />}
     </Modal>
   </section></div>
+}
+
+type ImageDownloads = PlatformProps['generatedImageDownloads']
+
+function ImageDownloadDirectory({ downloads, t }: { downloads: NonNullable<ImageDownloads>; t: PlatformProps['t'] }) {
+  const [directory, setDirectory] = useState<string>()
+  const [choosing, setChoosing] = useState(false)
+  const [failed, setFailed] = useState(false)
+  useEffect(() => {
+    let active = true
+    void downloads.getDirectory().then(
+      (path) => { if (active) setDirectory(path) },
+      (_error: unknown) => { if (active) setFailed(true) },
+    )
+    return () => { active = false }
+  }, [downloads])
+  const choose = async () => {
+    if (choosing) return
+    setChoosing(true)
+    try {
+      const selected = await downloads.chooseDirectory()
+      if (selected !== null) { setDirectory(selected); setFailed(false) }
+    } catch {
+      setFailed(true)
+    } finally {
+      setChoosing(false)
+    }
+  }
+  return <div className={styles.downloadDirectory}>
+    <div className={styles.imageActions}>
+      <Button variant="outline" size="sm" disabled={choosing || (directory === undefined && !failed)}
+        onClick={() => { void choose() }}>{t('imageChangeDownloadDirectory')}</Button>
+    </div>
+    {directory !== undefined && <p className={styles.saveStatus}>{t('imageDownloadDirectory', { path: directory })}</p>}
+    {failed && <p role="alert" className={css.error}>{t('imageDownloadDirectoryFailed')}</p>}
+  </div>
+}
+
+function SavedImage({ path, downloads, t }: { path: string; downloads: ImageDownloads; t: PlatformProps['t'] }) {
+  const [opening, setOpening] = useState(false)
+  const [failed, setFailed] = useState(false)
+  const reveal = async () => {
+    if (downloads === undefined || opening) return
+    setOpening(true)
+    setFailed(false)
+    try { await downloads.reveal(path) } catch { setFailed(true) }
+    finally { setOpening(false) }
+  }
+  return <div className={styles.downloadDirectory}>
+    <p role="status" className={styles.saveStatus}>{t('imageSaved', { path })}</p>
+    {downloads && path && <div className={styles.imageActions}>
+      <Button variant="outline" size="sm" disabled={opening} onClick={() => { void reveal() }}>{t('imageRevealFile')}</Button>
+    </div>}
+    {failed && <p role="alert" className={css.error}>{t('imageRevealFileFailed')}</p>}
+  </div>
 }
 
 function ImageReferences({ useAccount, usePlatform, addImageReferences, updateImageDraft, t }: PlatformProps) {

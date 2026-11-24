@@ -12,7 +12,7 @@ import { initialUsageState } from '../src/client/usage-state.ts'
 import type { AccountInjected, ClientAccountState } from '../src/client/AccountSection.tsx'
 import type { PlatformProps } from '../src/client/PlatformCommon.tsx'
 import type { AccountView, CheckoutView, GatewayId, ImageOutputId, InvoiceId, InvoiceRequest, PaymentChannelId, PaymentOrderId,
-  Sub2apiGroupId, Sub2apiUserId, SubscriptionPlanId } from '../src/types.ts'
+  RechargeBatchId, Sub2apiGroupId, Sub2apiUserId, SubscriptionPlanId } from '../src/types.ts'
 import { zh } from '../src/client/locales.ts'
 
 const releases: Array<() => void> = []
@@ -28,7 +28,7 @@ const invoice = { id: '11' as InvoiceId, kind: 'personal' as const, title: '样�
 const testPlan = { id: '5' as SubscriptionPlanId, name: '测试订阅', description: '**套餐说明**', group: 'Standard', price: 10,
   currency: 'CNY', validity: 30, validityUnit: 'day', features: [] }
 
-function fixture(plans: CheckoutView['plans'] = []) {
+function fixture(plans: CheckoutView['plans'] = [], generatedImages?: PlatformProps['generatedImageDownloads']) {
   const view: AccountView = { productName: 'Waibibabo Harnesss', platformOrigin: 'https://platform.example', status: 'signed-in', authorizationUrl: null,
     profile: { id: '7' as Sub2apiUserId, email: 'user@example.com', name: 'Example', balance: 10 }, groups: [
       { id: '3' as Sub2apiGroupId, name: 'Standard', platform: 'openai', imageGeneration: true },
@@ -58,12 +58,16 @@ function fixture(plans: CheckoutView['plans'] = []) {
     getOrders: vi.fn<PlatformRemote['getOrders']>(async () => ({ ok: true, value: { ok: true, data: { items: [], total: 0, page: 1, pageSize: 20 } } })),
     createOrder: vi.fn<PlatformRemote['createOrder']>(failure), getOrder: vi.fn<PlatformRemote['getOrder']>(failure),
     cancelOrder: vi.fn<PlatformRemote['cancelOrder']>(failure),
+    quoteRechargeBatch: vi.fn<PlatformRemote['quoteRechargeBatch']>(failure),
+    getRechargeBatches: vi.fn<PlatformRemote['getRechargeBatches']>(failure),
+    updateRechargeBatch: vi.fn<PlatformRemote['updateRechargeBatch']>(failure),
     getInvoices: vi.fn<PlatformRemote['getInvoices']>(async () => ({ ok: true, value: { ok: true, data: { items: [], total: 0 } } })),
     getInvoice: vi.fn<PlatformRemote['getInvoice']>(failure),
     quoteInvoice: vi.fn<PlatformRemote['quoteInvoice']>(async () => ({ ok: true, value: { ok: true, data: { paymentAmountCents: 50000, feeCents: 3000, amountCents: 53000 } } })),
     saveInvoice: vi.fn<PlatformRemote['saveInvoice']>(failure), getInvoiceFile: vi.fn<PlatformRemote['getInvoiceFile']>(failure),
   }
-  const files = { save: vi.fn<import('@deepseek-ai/dsh-client-ui-file-actions/client').FileActions['save']>(async () => ({ status: 'requested' })) }
+  const files = { save: vi.fn<import('@deepseek-ai/dsh-client-ui-file-actions/client').FileActions['save']>(async () => ({ status: 'requested' })),
+    generatedImages }
   const platform = createPlatformClient(remote, actions, files)
   releases.push(platform.dispose)
   const props: PlatformProps = { ...platform.injected, useAccount: bindSnapshotSelector(account),
@@ -77,6 +81,40 @@ function fixture(plans: CheckoutView['plans'] = []) {
     } }
   return { account, actions, platform, remote, props, view, files }
 }
+
+it('reuses the confirmation key after a lost response and resumes the first split payment', async () => {
+  const f = fixture()
+  const channelId = '31' as PaymentChannelId
+  f.remote.getCheckout.mockResolvedValue({ ok: true, value: { ok: true, data: {
+    enabled: true, balanceDisabled: false, desktopPaymentExtensions: true, plans: [], balanceMultiplier: 1,
+    subscriptionExchangeRate: 0, bonusMode: 'bonus', bonusTiers: [], notice: '', help: '',
+    methods: [{ id: 'alipay', channelId, name: '支付宝', currency: 'CNY', minimum: 1, maximum: 100,
+      feeRate: 0, available: true, splitRecharge: true }],
+  } } })
+  const quote = { amountCents: 15_000, payCents: 15_000, creditCents: 15_000, bonusCents: 0, completionBonusCents: 0,
+    channelId, channelName: '支付宝', parts: [{ payCents: 7_501 }, { payCents: 7_499 }] }
+  const batch = { ...quote, id: '41' as RechargeBatchId, status: 'OPEN', expiresAt: '2099-01-01T00:00:00Z',
+    creditedCents: 0, paidCents: 0, awardedBonusCents: 0, nextPart: 1, canContinue: true,
+    codeUncertain: false, payment: null, payments: [] }
+  f.remote.getRechargeBatches.mockResolvedValue({ ok: true, value: { ok: true, data: [] } })
+  f.remote.quoteRechargeBatch.mockResolvedValue({ ok: true, value: { ok: true, data: { ...quote, token: 'quote-1' } } })
+  f.remote.updateRechargeBatch.mockResolvedValueOnce({ ok: false }).mockResolvedValueOnce({ ok: true, value: { ok: true, data: batch } })
+  render(<BillingSection {...f.props} />)
+  const amount = await screen.findByRole('spinbutton', { name: /充值金额/u })
+  fireEvent.change(amount, { target: { value: '150' } })
+  const preview = screen.getByRole('button', { name: zh.rechargePreview })
+  await waitFor(() => { expect(preview).toHaveProperty('disabled', false) })
+  fireEvent.click(preview)
+  const confirm = await screen.findByRole('button', { name: zh.rechargeConfirm })
+  expect(f.remote.createOrder).not.toHaveBeenCalled()
+  fireEvent.click(confirm)
+  await waitFor(() => { expect(screen.getByRole('dialog').textContent).toContain(zh.uncertain) })
+  fireEvent.click(confirm)
+  const pay = await screen.findByRole('button', { name: '支付第 1 笔' })
+  expect(f.remote.updateRechargeBatch.mock.calls[0]?.[0]).toEqual(f.remote.updateRechargeBatch.mock.calls[1]?.[0])
+  fireEvent.click(pay)
+  await waitFor(() => { expect(f.remote.updateRechargeBatch).toHaveBeenLastCalledWith({ kind: 'continue', id: '41', part: 1 }) })
+})
 
 it('places platform protocol controls in Models and requires consent for an HTTP gateway', async () => {
   const f = fixture()
@@ -758,6 +796,30 @@ it('opens an enlarged preview and reports native download progress, completion a
   f.files.save.mockRejectedValueOnce(new Error('write failed'))
   fireEvent.click(screen.getByRole('button', { name: zh.imageDownload }))
   expect(await screen.findByText(zh.imageDownloadFailed)).toBeTruthy()
+})
+
+it('changes the generated-image download directory and reveals the saved file', async () => {
+  const downloads = { getDirectory: vi.fn(async () => 'D:/Downloads'), chooseDirectory: vi.fn(async () => 'D:/Pictures'),
+    reveal: vi.fn(async (_path: string) => {}) }
+  const f = fixture([], downloads)
+  const id = 'download-image' as ImageOutputId
+  f.remote.generateImages.mockResolvedValue({ ok: true, value: { ok: true, data: {
+    images: [{ id, source: 'https://image.example/original.png', revisedPrompt: null }],
+  } } })
+  await f.platform.injected.generate({ groupId: '3' as Sub2apiGroupId, model: 'gpt-image-2', prompt: 'test', count: 1, size: '' })
+  render(<ImagePanel {...f.props} />)
+  expect(await screen.findByText('图片下载位置：D:/Downloads')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: zh.imageChangeDownloadDirectory }))
+  expect(await screen.findByText('图片下载位置：D:/Pictures')).toBeTruthy()
+  expect(screen.queryByRole('button', { name: zh.imageRevealFile })).toBeNull()
+  f.files.save.mockResolvedValueOnce({ status: 'saved', path: 'D:/Pictures/generated.png' })
+  fireEvent.click(screen.getByRole('button', { name: zh.imageDownload }))
+  const reveal = await screen.findByRole('button', { name: zh.imageRevealFile })
+  expect(f.files.save).toHaveBeenCalledWith({ url: 'https://image.example/original.png', name: 'waibibabo-download-image.png' },
+    'download', 'generatedImages')
+  await expect(`${reveal.parentElement?.parentElement?.textContent}\n`).toMatchFileSnapshot('./expected/platform-image-download.txt')
+  fireEvent.click(reveal)
+  await waitFor(() => { expect(downloads.reveal).toHaveBeenCalledExactlyOnceWith('D:/Pictures/generated.png') })
 })
 
 it('edits a single model allocation independently and can restore global inheritance', async () => {

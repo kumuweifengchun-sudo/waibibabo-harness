@@ -33,7 +33,7 @@ Pass an original URL, optional filename and MIME, or an authorized `read(signal)
 
 `save(source, mode)` returns `cancelled`, `requested` for a browser download, or `saved` with the absolute destination `path` after a native save completes. Web menus offer Download for files and images and omit Save as. Web downloads pass original content to the browser with a suggested filename; the browser owns the destination and completion. They return no local path. Save as requires Desktop: `canSaveAs` is false on Web and Web `saveAs` calls reject without reading the source.
 
-Desktop completion toasts offer a Show in folder text action (Show in Finder on macOS), capturing that operation's destination. The action uses `session.openWorkspacePath` with the existing Host path validation; no download history or separate reveal IPC is retained. Context-menu reveal belongs to `ui-open-in-app` and always targets the original local file, regardless of previous saves.
+Desktop completion toasts offer a Show in folder text action (Show in Finder on macOS), capturing that operation's destination. The action uses `session.openWorkspacePath` with the existing Host path validation; no download history or separate reveal IPC is retained. Context-menu reveal belongs to `ui-open-in-app` and always targets the original local file, regardless of previous saves. The Desktop generated-image page uses its own download destination and reveals only completed image saves from the current window.
 
 Filename and MIME normalization reuse the file-drag utility, so saving and dragging retain the same original format and filename policy.
 

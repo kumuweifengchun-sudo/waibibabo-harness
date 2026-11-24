@@ -20,6 +20,11 @@ function createProductApi(): DshDesktopProductApi {
     activate: () => ipcRenderer.invoke(DESKTOP_IPC.activate) as Promise<void>,
     fileActions: {
       save: request => ipcRenderer.invoke(DESKTOP_IPC.fileSave, request) as Promise<FileSaveResult>,
+      generatedImages: {
+        getDirectory: () => ipcRenderer.invoke(DESKTOP_IPC.generatedImageDirectory) as Promise<string>,
+        chooseDirectory: () => ipcRenderer.invoke(DESKTOP_IPC.generatedImageDirectoryChoose) as Promise<string | null>,
+        reveal: path => ipcRenderer.invoke(DESKTOP_IPC.generatedImageReveal, path) as Promise<void>,
+      },
       readClipboardImage: url => ipcRenderer.invoke(DESKTOP_IPC.clipboardImageRead, url) as
         Promise<{ bytes: Uint8Array; mediaType: string }>,
     },

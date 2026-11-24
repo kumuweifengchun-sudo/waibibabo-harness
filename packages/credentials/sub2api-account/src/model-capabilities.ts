@@ -17,7 +17,7 @@ export const platformModelsResponse = z.object({ data: z.array(z.object({
 export type PlatformModelCatalog = z.infer<typeof platformModelsResponse>['data']
 
 function nativeModel(id: string, api: Api): Model<Api> | undefined {
-  const name = id.split(/[/:]/u).at(-1)?.toLowerCase() ?? id.toLowerCase()
+  const name = (id.split(/[/:]/u).at(-1) ?? id).toLowerCase().replace(/^(claude-.*)\[1m\]$/u, '$1')
   let provider: BuiltinProvider
   if (/^(gpt|chatgpt|codex|o[1-9])(?:[-_.]|$)/u.test(name)) provider = 'openai'
   else if (name.startsWith('claude-')) provider = 'anthropic'

@@ -1,8 +1,10 @@
 /** Trusted-window Chromium downloads and clipboard fallback reads. */
-import { app, ipcMain, session } from 'electron'
+import { app, dialog, ipcMain, session, shell } from 'electron'
 import type { BrowserWindow, IpcMainInvokeEvent } from 'electron'
 import { closeSync, openSync, rmSync } from 'node:fs'
-import { extname, join } from 'node:path'
+import { readFile, stat } from 'node:fs/promises'
+import { extname, isAbsolute, join } from 'node:path'
+import { writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import { resolveDragFileName } from '@deepseek-ai/dsh-util-file-drag'
 import { randomUUID } from 'node:crypto'
 import type { FileSaveResult } from '@deepseek-ai/dsh-client-ui-file-actions/types'
@@ -10,18 +12,36 @@ import { DESKTOP_IPC } from './ipc.ts'
 import { resolveDurationMs } from './duration-env.ts'
 
 /** @param value - untrusted IPC input. @returns captured URL and destination policy. */
-function saveRequest(value: unknown): { url: URL; name?: string; mediaType?: string; mode: 'download' | 'saveAs' } {
+function saveRequest(value: unknown): { url: URL; name?: string; mediaType?: string; mode: 'download' | 'saveAs'; generatedImage: boolean } {
   if (typeof value !== 'object' || value === null
     || !('url' in value) || typeof value.url !== 'string'
     || ('name' in value && typeof value.name !== 'string')
     || ('mediaType' in value && typeof value.mediaType !== 'string')
-    || !('mode' in value) || (value.mode !== 'download' && value.mode !== 'saveAs')) throw new Error('Invalid file save request')
+    || !('mode' in value) || (value.mode !== 'download' && value.mode !== 'saveAs')
+    || ('destination' in value && (value.destination !== 'generatedImages' || value.mode !== 'download'))) {
+    throw new Error('Invalid file save request')
+  }
   const url = new URL(value.url)
   if (!['https:', 'http:', 'blob:', 'data:'].includes(url.protocol) || url.username || url.password) throw new Error('Unsupported file source')
-  return { url, mode: value.mode,
+  return { url, mode: value.mode, generatedImage: 'destination' in value,
     ...'name' in value ? { name: value.name as string } : {},
     ...'mediaType' in value ? { mediaType: value.mediaType as string } : {},
   }
+}
+
+function imageDirectoryPreference(): string {
+  return join(app.getPath('userData'), 'desktop', 'generated-image-downloads.json')
+}
+
+async function generatedImageDirectory(): Promise<string> {
+  let raw: string
+  try { raw = await readFile(imageDirectoryPreference(), 'utf8') } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return app.getPath('downloads')
+    throw error
+  }
+  const path: unknown = JSON.parse(raw)
+  if (typeof path !== 'string' || !isAbsolute(path) || path.includes('\0')) throw new Error('Invalid generated image download folder')
+  return path
 }
 
 /**
@@ -39,10 +59,44 @@ export function installFileActions(
     event: IpcMainInvokeEvent
     owner: BrowserWindow
     request: ReturnType<typeof saveRequest>
+    directory: string
     finish: (result: FileSaveResult | Error) => void
     started: () => void
     item?: Electron.DownloadItem
   }>()
+  const savedImages = new WeakMap<BrowserWindow, Set<string>>()
+  const directoryChoices = new WeakMap<BrowserWindow, Promise<string | null>>()
+  ipcMain.handle(DESKTOP_IPC.generatedImageDirectory, (event) => {
+    assertOwner(event)
+    return generatedImageDirectory()
+  })
+  ipcMain.handle(DESKTOP_IPC.generatedImageDirectoryChoose, (event) => {
+    const owner = assertOwner(event)
+    const pendingChoice = directoryChoices.get(owner)
+    if (pendingChoice !== undefined) return pendingChoice
+    const choice = (async () => {
+      const defaultPath = await generatedImageDirectory().catch((_error: unknown) => app.getPath('downloads'))
+      assertOwner(event)
+      const result = await dialog.showOpenDialog(owner, { defaultPath, properties: ['openDirectory', 'createDirectory'] })
+      const path = result.filePaths[0]
+      if (result.canceled || path === undefined || owner.isDestroyed()) return null
+      assertOwner(event)
+      if (!isAbsolute(path) || !(await stat(path)).isDirectory()) throw new Error('Image download folder unavailable')
+      assertOwner(event)
+      await writeFileAtomic(imageDirectoryPreference(), JSON.stringify(path) + '\n', { mode: 0o600, dirMode: 0o700 })
+      return path
+    })().finally(() => { directoryChoices.delete(owner) })
+    directoryChoices.set(owner, choice)
+    return choice
+  })
+  ipcMain.handle(DESKTOP_IPC.generatedImageReveal, async (event, path: unknown) => {
+    const owner = assertOwner(event)
+    if (typeof path !== 'string' || !savedImages.get(owner)?.has(path) || !(await stat(path)).isFile()) {
+      throw new Error('Saved image unavailable')
+    }
+    assertOwner(event)
+    shell.showItemInFolder(path)
+  })
   session.defaultSession.on('will-download', (_event, item, contents) => {
     const url = item.getURLChain()[0]
     if (url === undefined || !new URL(url).hash.startsWith('#dsh-download=')) return
@@ -57,7 +111,7 @@ export function installFileActions(
         name: entry.request.name ?? item.getFilename(),
         mediaType: item.getMimeType() || entry.request.mediaType || '',
       })
-      let destination = join(app.getPath('downloads'), name)
+      let destination = join(entry.directory, name)
       if (entry.request.mode === 'saveAs') {
         item.setSaveDialogOptions({ defaultPath: destination, properties: ['showOverwriteConfirmation', 'createDirectory'] })
       } else {
@@ -83,7 +137,16 @@ export function installFileActions(
           }
           if (!pending.has(url)) return
           assertOwner(entry.event)
-          entry.finish({ status: 'saved', path: item.getSavePath() })
+          const path = item.getSavePath()
+          if (entry.request.generatedImage) {
+            let paths = savedImages.get(entry.owner)
+            if (paths === undefined) {
+              paths = new Set()
+              savedImages.set(entry.owner, paths)
+            }
+            paths.add(path)
+          }
+          entry.finish({ status: 'saved', path })
         } catch (error) { entry.finish(error instanceof Error ? error : new Error('File download unavailable')) }
       })
     } catch (error) {
@@ -97,9 +160,16 @@ export function installFileActions(
     }
   })
   const downloadTimeoutMs = resolveDurationMs(process.env, 'DSH_DESKTOP_FILE_DOWNLOAD_TIMEOUT_MS', 300_000)
-  ipcMain.handle(DESKTOP_IPC.fileSave, (event, value: unknown): Promise<FileSaveResult> => {
+  ipcMain.handle(DESKTOP_IPC.fileSave, async (event, value: unknown): Promise<FileSaveResult> => {
     const owner = assertOwner(event)
     const request = saveRequest(value)
+    let directory = app.getPath('downloads')
+    if (request.generatedImage) {
+      const choosing = directoryChoices.get(owner)
+      if (choosing !== undefined) await choosing
+      directory = await generatedImageDirectory()
+      assertOwner(event)
+    }
     // Fragments do not change the fetched resource; each native request has its own completion identity.
     request.url.hash = `dsh-download=${randomUUID()}`
     const url = request.url.href
@@ -126,7 +196,7 @@ export function installFileActions(
         finish(new Error('File download timed out'))
         item?.cancel()
       }, downloadTimeoutMs)
-      pending.set(url, { event, owner, request, finish, started: () => { clearTimeout(timer) } })
+      pending.set(url, { event, owner, request, directory, finish, started: () => { clearTimeout(timer) } })
       owner.once('closed', cancel)
       contents.on('did-start-navigation', navigate)
       try { contents.downloadURL(url) }

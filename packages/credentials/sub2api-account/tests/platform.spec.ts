@@ -1,10 +1,54 @@
 import { createServer } from 'node:http'
 import { afterEach, expect, it } from 'vitest'
-import { checkoutRecord, pixel, invoiceFileId, invoiceInput, platformFixture } from './platform-fixture.ts'
-import type { GatewayId, ImageReferenceId, InvoiceFileId, PaymentOrderId, Sub2apiGroupId, SubscriptionPlanId } from '../src/types.ts'
+import { checkoutRecord, pixel, invoiceFileId, invoiceInput, orderRecord, platformFixture } from './platform-fixture.ts'
+import type { GatewayId, ImageReferenceId, InvoiceFileId, PaymentChannelId, PaymentOrderId, Sub2apiGroupId, SubscriptionPlanId } from '../src/types.ts'
+
+import { accountFixture } from './account-fixture.ts'
 
 const close: Array<() => Promise<void>> = []
 afterEach(async () => { for (const stop of close.splice(0)) await stop() })
+
+it('quotes, confirms, resumes and checks split payments using the desktop grant', async () => {
+  const root = '/api/v1/desktop/payment'
+  const offer = { amount_cents: 15_000, pay_cents: 15_000, credit_cents: 15_000, bonus_cents: 0, completion_bonus_cents: 0,
+    channel_id: '31', channel_name: 'Alipay', parts: [{ pay_cents: 7_501 }, { pay_cents: 7_499 }], quote_token: 'price-token' }
+  const progress = { ...offer, id: 41, status: 'OPEN', paid_cents: 0, credited_cents: 0, awarded_bonus_cents: 0,
+    next_part: 1, can_continue: true, code_uncertain: false, payments: [], expires_at: '2099-01-01T00:00:00Z' }
+  const f = await accountFixture({ feature: (req, res) => {
+    const path = new URL(req.url ?? '/', 'http://local').pathname
+    if (!path.startsWith(root)) return false
+    let result: object = progress
+    if (path.endsWith('/quote')) result = offer
+    else if (path.endsWith('/verify-alipay-ledger')) result = { ...orderRecord, status: 'PAID_EXPIRED' }
+    else if (path.endsWith('/orders/19')) result = orderRecord
+    else if (path.endsWith('/recharge-batches') && req.method === 'GET') result = [progress]
+    else if (path.endsWith('/continue')) result = { ...progress, can_continue: false,
+      payment: { order_id: 19, amount: 75.01, pay_amount: 75.01, expires_at: progress.expires_at, qr_code: 'https://pay.example/19' },
+      payments: [{ order_id: 19, part: 1, status: 'PENDING' }] }
+    res.setHeader('Content-Type', 'application/json')
+    res.end(JSON.stringify({ code: 0, data: result }))
+    return true
+  } })
+  await f.account.signInWithPassword('user@example.com', 'password')
+  const channelId = '31' as PaymentChannelId
+  const quote = await f.account.quoteRechargeBatch(15_000, channelId)
+  expect(quote).toMatchObject({ ok: true, data: { token: 'price-token', parts: [{ payCents: 7_501 }, { payCents: 7_499 }] } })
+  const key = '11111111-1111-4111-8111-111111111111'
+  const confirmed = await f.account.updateRechargeBatch({ kind: 'confirm', amountCents: 15_000, channelId, token: 'price-token', key })
+  expect(confirmed).toMatchObject({ ok: true, data: { id: '41', canContinue: true } })
+  if (!confirmed.ok) throw new Error('Missing batch')
+  const continued = await f.account.updateRechargeBatch({ kind: 'continue', id: confirmed.data.id, part: 1 })
+  expect(continued).toMatchObject({ ok: true, data: { payment: { id: '19' } } })
+  if (!continued.ok) throw new Error('Missing payment')
+  expect(continued.data.payment?.qrCode).toMatch(/^data:image\/png/u)
+  expect(await f.account.getRechargeBatches()).toMatchObject({ ok: true, data: [{ id: '41' }] })
+  expect(await f.account.getOrder('19' as PaymentOrderId, true, true)).toMatchObject({ ok: true, data: { status: 'PAID_EXPIRED' } })
+  const calls = f.requests.filter(request => request.path.startsWith(root))
+  expect(calls.every(request => request.authorization === 'Bearer desktop-access-1')).toBe(true)
+  expect(calls.find(request => request.body.idempotency_key)?.body).toEqual({
+    amount: 150, channel_id: '31', quote_token: 'price-token', idempotency_key: key,
+  })
+})
 
 it('keeps account grants on the main origin and switches only approved inference endpoints', async () => {
   const calls: Array<{ path: string; authorization: string | undefined }> = []

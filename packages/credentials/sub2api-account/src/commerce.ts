@@ -3,7 +3,7 @@ import { z } from 'zod'
 import QRCode from 'qrcode'
 import { AccountError, parse } from './http.ts'
 import type { CheckoutView, OrderPage, OrderRequest, PaymentChannelId, PaymentLaunch, PaymentMethod, PaymentOrder, PaymentOrderId,
-  PlatformPageQuery, SubscriptionPlanId, SubscriptionView } from './platform-types.ts'
+  PlatformPageQuery, RechargeBatch, RechargeBatchAction, RechargeBatchId, RechargeOffer, RechargeQuote, SubscriptionPlanId, SubscriptionView } from './platform-types.ts'
 
 const id = z.number().int().positive()
 const money = z.number().nonnegative()
@@ -11,11 +11,12 @@ const method = z.object({ currency: z.string().optional(), display_name: z.strin
   single_min: money, single_max: money, fee_rate: money, available: z.boolean().optional() })
 const channelId = z.string().regex(/^[1-9]\d{0,18}$/u)
 const channel = method.extend({ payment_type: z.string(), channel_id: channelId, channel_name: z.string(),
-  sort_order: z.number(), daily_limit: money, daily_remaining: z.number() })
+  sort_order: z.number(), daily_limit: money, daily_remaining: z.number(), split_recharge: z.boolean().optional() })
 const plan = z.object({ id, name: z.string(), description: z.string(), price: money, currency: z.string().optional(),
   validity_days: z.number().int().positive(), validity_unit: z.string(), group_name: z.string().optional(), features: z.array(z.string()) })
 const checkout = z.object({ methods: z.record(z.string(), method), plans: z.array(plan), balance_disabled: z.boolean(),
   payment_channels: z.array(channel).optional(), recharge_fee_rate: money.optional(),
+  desktop_payment_extensions: z.boolean().optional(), recharge_min_amount: money.optional(), recharge_max_amount: money.optional(),
   balance_recharge_multiplier: money, subscription_usd_to_cny_rate: money,
   recharge_bonus_tiers: z.array(z.object({ min_amount: money, bonus_percent: money })).nullish(),
   recharge_bonus_mode: z.string().optional(), recharge_bonus_notice: z.string().optional(), help_text: z.string().optional() })
@@ -42,6 +43,7 @@ export function checkoutView(value: unknown, config: unknown): CheckoutView {
     currency: value.currency ?? '', minimum: value.single_min, maximum: value.daily_limit > 0
       ? Math.min(value.daily_remaining, value.single_max || Infinity) : value.single_max,
     feeRate: data.recharge_fee_rate ?? value.fee_rate,
+    splitRecharge: data.desktop_payment_extensions === true && value.split_recharge === true,
     available: value.available !== false && (value.daily_limit === 0 || value.daily_remaining > 0),
   }))
   for (const [key, value] of Object.entries(data.methods)) {
@@ -51,6 +53,8 @@ export function checkoutView(value: unknown, config: unknown): CheckoutView {
       maximum: value.single_max, feeRate: data.recharge_fee_rate ?? value.fee_rate, available: value.available !== false })
   }
   return { enabled: parse(z.object({ enabled: z.boolean() }), config).enabled,
+    desktopPaymentExtensions: data.desktop_payment_extensions ?? false,
+    rechargeMinimum: data.recharge_min_amount ?? 0, rechargeMaximum: data.recharge_max_amount ?? 0,
     balanceDisabled: data.balance_disabled, balanceMultiplier: data.balance_recharge_multiplier,
     subscriptionExchangeRate: data.subscription_usd_to_cny_rate, bonusMode: data.recharge_bonus_mode ?? 'bonus',
     bonusTiers: (data.recharge_bonus_tiers ?? []).map(tier => ({ minimum: tier.min_amount, percent: tier.bonus_percent })),
@@ -102,7 +106,8 @@ export async function paymentLaunch(value: unknown, origin: string): Promise<Pay
   if (data.qr_code !== undefined && data.qr_code.length > 4096) throw new AccountError('protocol')
   const qrCode = data.qr_code ? await QRCode.toDataURL(data.qr_code, { width: 256, margin: 2 }) : null
   return { id: String(data.order_id) as PaymentOrderId, amount: data.amount, payAmount: data.pay_amount,
-    currency: data.currency ?? '', expiresAt: data.expires_at, paymentUrl, qrCode }
+    currency: data.currency ?? '', expiresAt: data.expires_at, paymentUrl, qrCode,
+    ...data.payment_type === undefined ? {} : { method: data.payment_type } }
 }
 
 /** Encode bounded pagination and status without accepting an account id.
@@ -141,6 +146,90 @@ export function paymentOrder(value: unknown): PaymentOrder {
 export function orderPage(value: unknown): OrderPage {
   const data = parse(z.object({ items: z.array(order), total: z.number().int().nonnegative(), page: id, page_size: id }), value)
   return { items: data.items.map(paymentOrder), total: data.total, page: data.page, pageSize: data.page_size }
+}
+
+const cents = z.number().int().nonnegative()
+const partNumber = z.number().int().min(1).max(10)
+const rechargeQuote = z.object({
+  amount_cents: id, pay_cents: id, credit_cents: cents, bonus_cents: cents, completion_bonus_cents: cents,
+  channel_id: channelId, channel_name: z.string(), parts: z.array(z.object({ pay_cents: id })).min(1).max(10),
+})
+const rechargeToken = z.string().min(1).max(512)
+const rechargeOffer = rechargeQuote.extend({ quote_token: rechargeToken })
+const rechargeProgress = rechargeQuote.extend({
+  id, status: z.string(), expires_at: z.string(), paid_cents: cents, credited_cents: cents, awarded_bonus_cents: cents,
+  next_part: partNumber.optional(), can_continue: z.boolean(), code_uncertain: z.boolean(), payment: launch.optional(),
+  payments: z.array(z.object({ order_id: id, part: partNumber, status: z.string() })),
+})
+
+function rechargeSummary(data: z.infer<typeof rechargeQuote>): RechargeQuote {
+  return { amountCents: data.amount_cents, payCents: data.pay_cents, creditCents: data.credit_cents,
+    bonusCents: data.bonus_cents, completionBonusCents: data.completion_bonus_cents,
+    channelId: data.channel_id as PaymentChannelId, channelName: data.channel_name,
+    parts: data.parts.map(part => ({ payCents: part.pay_cents })) }
+}
+
+/** Parse an offered batch before confirmation.
+ * @param value - Payment API quote.
+ * @returns the confirmation token and server-priced parts.
+ */
+export function rechargeBatchOffer(value: unknown): RechargeOffer {
+  const data = parse(rechargeOffer, value)
+  return { ...rechargeSummary(data), token: data.quote_token }
+}
+
+async function rechargeBatchView(data: z.infer<typeof rechargeProgress>, origin: string): Promise<RechargeBatch> {
+  return { ...rechargeSummary(data), id: String(data.id) as RechargeBatchId, status: data.status, expiresAt: data.expires_at,
+    paidCents: data.paid_cents, creditedCents: data.credited_cents, awardedBonusCents: data.awarded_bonus_cents,
+    nextPart: data.next_part ?? null, canContinue: data.can_continue, codeUncertain: data.code_uncertain,
+    payment: data.payment === undefined ? null : await paymentLaunch(data.payment, origin),
+    payments: data.payments.map(value => ({ orderId: String(value.order_id) as PaymentOrderId, part: value.part, status: value.status })) }
+}
+
+/** Parse the batch with its current payment target, if present.
+ * @param value - Payment API batch.
+ * @param origin - Hosted payment origin.
+ * @returns account-owned progress.
+ */
+export function rechargeBatch(value: unknown, origin: string): Promise<RechargeBatch> {
+  return rechargeBatchView(parse(rechargeProgress, value), origin)
+}
+
+/** Parse the page of restartable recharge batches.
+ * @param value - Payment API batch list.
+ * @param origin - Hosted payment origin.
+ * @returns account-owned batches.
+ */
+export function rechargeBatches(value: unknown, origin: string): Promise<readonly RechargeBatch[]> {
+  return Promise.all(parse(z.array(rechargeProgress), value).map(batch => rechargeBatchView(batch, origin)))
+}
+
+/** Build the quote request shared by preview and confirmation.
+ * @param amountCents - Requested recharge in minor units.
+ * @param channel - Selected checkout channel.
+ * @returns the validated payment API quote body.
+ */
+export function rechargeQuoteBody(amountCents: number, channel: PaymentChannelId): { amount: number; channel_id: string } {
+  const amount = id.safeParse(amountCents)
+  const selected = channelId.safeParse(channel)
+  if (!amount.success || !selected.success) throw new AccountError('validation')
+  return { amount: amount.data / 100, channel_id: selected.data }
+}
+
+/** Build an owned batch request for the desktop payment API.
+ * @param action - Owned recharge action.
+ * @returns validated path suffix and optional POST body.
+ */
+export function rechargeBatchRequest(action: RechargeBatchAction): { suffix: string; body?: object } {
+  if (action.kind === 'confirm') {
+    if (!rechargeToken.safeParse(action.token).success || !z.uuid().safeParse(action.key).success) throw new AccountError('validation')
+    return { suffix: '', body: { ...rechargeQuoteBody(action.amountCents, action.channelId), quote_token: action.token, idempotency_key: action.key } }
+  }
+  const path = '/' + platformId(action.id)
+  if (action.kind === 'refresh') return { suffix: path }
+  if (action.kind === 'cancel') return { suffix: path + '/cancel', body: {} }
+  if (!partNumber.safeParse(action.part).success) throw new AccountError('validation')
+  return { suffix: path + '/continue', body: { part: action.part, is_mobile: false } }
 }
 
 /** Read the current account's subscription progress from the existing dashboard API.

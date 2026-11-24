@@ -4063,9 +4063,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'user-owned orders and totals.',
       },
       {
-        signature: '@Remote getOrder(id: PaymentOrderId, verify: boolean): Promise<PlatformResult<PaymentOrder>>',
+        signature: '@Remote getOrder(id: PaymentOrderId, verify: boolean, ledger?: boolean): Promise<PlatformResult<PaymentOrder>>',
         description: 'Refresh one order and optionally ask its provider to verify payment.',
-        parameters: [{ name: 'id', description: 'Owned order identifier.' }, { name: 'verify', description: 'Query the payment provider through the platform.' }],
+        parameters: [{ name: 'id', description: 'Owned order identifier.' }, { name: 'verify', description: 'Query the payment provider through the platform.' }, { name: 'ledger', description: 'Explicitly request Alipay reconciliation for an owned Alipay order.' }],
         returns: 'authoritative order state; a browser return alone never marks payment successful.',
       },
       {
@@ -4073,6 +4073,24 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Cancel an owned pending payment order through the platform\'s existing rules.',
         parameters: [{ name: 'id', description: 'Owned order identifier.' }],
         returns: 'acknowledgement only after the platform confirms cancellation.',
+      },
+      {
+        signature: '@Remote quoteRechargeBatch(amountCents: number, channel: PaymentChannelId): Promise<PlatformResult<RechargeOffer>>',
+        description: 'Price a split recharge before creating a batch.',
+        parameters: [{ name: 'amountCents', description: 'Requested balance recharge in minor currency units.' }, { name: 'channel', description: 'Selected Alipay channel.' }],
+        returns: 'a server quote with no order created.',
+      },
+      {
+        signature: '@Remote getRechargeBatches(before?: RechargeBatchId, signal?: AbortSignal): Promise<PlatformResult<readonly RechargeBatch[]>>',
+        description: 'Read the current account\'s recent recharge batches.',
+        parameters: [{ name: 'before', description: 'Optional exclusive cursor.' }, { name: 'signal', description: 'Client cancellation.' }],
+        returns: 'the most recent owned batches before the cursor.',
+      },
+      {
+        signature: '@Remote updateRechargeBatch(action: RechargeBatchAction): Promise<PlatformResult<RechargeBatch>>',
+        description: 'Read or update an owned recharge batch.',
+        parameters: [{ name: 'action', description: 'Explicit operation for an owned recharge batch.' }],
+        returns: 'current progress. Confirmation retries reuse the same request key.',
       },
       {
         signature: '@Remote getInvoices(query: PlatformPageQuery, signal?: AbortSignal): Promise<PlatformResult<InvoicePage>>',
@@ -6091,7 +6109,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AccountFailure',
-    declaration: 'export type AccountFailure = \'network\' | \'timeout\' | \'server\' | \'authorization\' | \'credentials\' | \'captcha\' | \'two-factor\' | \'protocol\' | \'storage\' | \'expired\' | \'busy\' | \'no-models\' | \'revocation\' | \'upgrade-required\' | \'usage-filter\' | \'validation\' | \'unavailable\' | \'uncertain\' | \'conflict\' | \'invoice-evidence\' | \'gateway-unavailable\' | \'account-line-unavailable\' | \'insecure-gateway\' | \'balance\' | \'model-limits\' | \'payment-gateway\' | \'registration-input\' | \'registration-code\' | \'registration-expired\' | \'registration-unknown\' | \'email-code\' | \'email-rate\' | \'email-exists\' | \'email-domain\' | \'payment-limit\' | \'payment-return\' | \'payment-channel\' | \'payment-input\';',
+    declaration: 'export type AccountFailure = \'network\' | \'timeout\' | \'server\' | \'authorization\' | \'credentials\' | \'captcha\' | \'two-factor\' | \'protocol\' | \'storage\' | \'expired\' | \'busy\' | \'no-models\' | \'revocation\' | \'upgrade-required\' | \'usage-filter\' | \'validation\' | \'unavailable\' | \'uncertain\' | \'conflict\' | \'invoice-evidence\' | \'gateway-unavailable\' | \'account-line-unavailable\' | \'insecure-gateway\' | \'balance\' | \'model-limits\' | \'payment-gateway\' | \'registration-input\' | \'registration-code\' | \'registration-expired\' | \'registration-unknown\' | \'email-code\' | \'email-rate\' | \'email-exists\' | \'email-domain\' | \'payment-limit\' | \'payment-return\' | \'payment-channel\' | \'payment-input\' | \'ledger-unavailable\' | \'ledger-rate\';',
   },
   {
     name: 'AccountNotification',
@@ -6527,7 +6545,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'CheckoutView',
-    declaration: 'export interface CheckoutView {\n    readonly enabled: boolean;\n    readonly balanceDisabled: boolean;\n    readonly methods: readonly PaymentMethod[];\n    readonly plans: readonly SubscriptionPlan[];\n    readonly balanceMultiplier: number;\n    readonly subscriptionExchangeRate: number;\n    readonly bonusMode: string;\n    readonly bonusTiers: readonly {\n        readonly minimum: number;\n        readonly percent: number;\n    }[];\n    readonly notice: string;\n    readonly help: string;\n}',
+    declaration: 'export interface CheckoutView {\n    readonly desktopPaymentExtensions?: boolean;\n    readonly rechargeMinimum?: number;\n    readonly rechargeMaximum?: number;\n    readonly enabled: boolean;\n    readonly balanceDisabled: boolean;\n    readonly methods: readonly PaymentMethod[];\n    readonly plans: readonly SubscriptionPlan[];\n    readonly balanceMultiplier: number;\n    readonly subscriptionExchangeRate: number;\n    readonly bonusMode: string;\n    readonly bonusTiers: readonly {\n        readonly minimum: number;\n        readonly percent: number;\n    }[];\n    readonly notice: string;\n    readonly help: string;\n}',
   },
   {
     name: 'ChecksRollup',
@@ -8479,11 +8497,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'PaymentLaunch',
-    declaration: 'export interface PaymentLaunch {\n    readonly id: PaymentOrderId;\n    readonly amount: number;\n    readonly payAmount: number;\n    readonly currency: string;\n    readonly expiresAt: string;\n    readonly paymentUrl: string | null;\n    readonly qrCode: string | null;\n}',
+    declaration: 'export interface PaymentLaunch {\n    readonly method?: string;\n    readonly id: PaymentOrderId;\n    readonly amount: number;\n    readonly payAmount: number;\n    readonly currency: string;\n    readonly expiresAt: string;\n    readonly paymentUrl: string | null;\n    readonly qrCode: string | null;\n}',
   },
   {
     name: 'PaymentMethod',
-    declaration: 'export interface PaymentMethod {\n    readonly id: string;\n    readonly channelId?: PaymentChannelId;\n    readonly name: string;\n    readonly currency: string;\n    readonly minimum: number;\n    readonly maximum: number;\n    readonly feeRate: number;\n    readonly available: boolean;\n}',
+    declaration: 'export interface PaymentMethod {\n    readonly splitRecharge?: boolean;\n    readonly id: string;\n    readonly channelId?: PaymentChannelId;\n    readonly name: string;\n    readonly currency: string;\n    readonly minimum: number;\n    readonly maximum: number;\n    readonly feeRate: number;\n    readonly available: boolean;\n}',
   },
   {
     name: 'PaymentOrder',
@@ -8872,6 +8890,26 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ReasoningEffortId',
     declaration: 'export type ReasoningEffortId = Branded<\'ReasoningEffortId\'>;',
+  },
+  {
+    name: 'RechargeBatch',
+    declaration: 'export interface RechargeBatch extends RechargeQuote {\n    readonly id: RechargeBatchId;\n    readonly status: string;\n    readonly expiresAt: string;\n    readonly paidCents: number;\n    readonly creditedCents: number;\n    readonly awardedBonusCents: number;\n    readonly nextPart: number | null;\n    readonly canContinue: boolean;\n    readonly codeUncertain: boolean;\n    readonly payment: PaymentLaunch | null;\n    readonly payments: readonly {\n        readonly orderId: PaymentOrderId;\n        readonly part: number;\n        readonly status: string;\n    }[];\n}',
+  },
+  {
+    name: 'RechargeBatchAction',
+    declaration: 'export type RechargeBatchAction = {\n    readonly kind: \'confirm\';\n    readonly amountCents: number;\n    readonly channelId: PaymentChannelId;\n    readonly token: string;\n    readonly key: string;\n} | {\n    readonly kind: \'continue\';\n    readonly id: RechargeBatchId;\n    readonly part: number;\n} | {\n    readonly kind: \'refresh\';\n    readonly id: RechargeBatchId;\n} | {\n    readonly kind: \'cancel\';\n    readonly id: RechargeBatchId;\n};',
+  },
+  {
+    name: 'RechargeBatchId',
+    declaration: 'export type RechargeBatchId = Branded<\'Sub2apiRechargeBatchId\'>;',
+  },
+  {
+    name: 'RechargeOffer',
+    declaration: 'export interface RechargeOffer extends RechargeQuote {\n    readonly token: string;\n}',
+  },
+  {
+    name: 'RechargeQuote',
+    declaration: 'export interface RechargeQuote {\n    readonly amountCents: number;\n    readonly payCents: number;\n    readonly creditCents: number;\n    readonly bonusCents: number;\n    readonly completionBonusCents: number;\n    readonly channelId: PaymentChannelId;\n    readonly channelName: string;\n    readonly parts: readonly {\n        readonly payCents: number;\n    }[];\n}',
   },
   {
     name: 'RecommendationDetails',
@@ -11043,11 +11081,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'UsageQuery',
-    declaration: 'export interface UsageQuery {\n    readonly page: number;\n    readonly pageSize: number;\n    readonly startDate: string;\n    readonly endDate: string;\n    readonly timezone: string;\n    readonly model: string;\n    readonly groupId: Sub2apiGroupId | null;\n    readonly stream: boolean | null;\n}',
+    declaration: 'export interface UsageQuery {\n    readonly page: number;\n    readonly pageSize: number;\n    readonly startDate: string;\n    readonly endDate: string;\n    readonly timezone: string;\n    readonly model: string;\n    readonly groupId: Sub2apiGroupId | null;\n    readonly stream: boolean | null;\n    readonly requestType?: \'sync\' | \'stream\' | \'ws_v2\';\n}',
   },
   {
     name: 'UsageRecord',
-    declaration: 'export interface UsageRecord {\n    readonly id: Sub2apiUsageId;\n    readonly createdAt: string;\n    readonly model: string;\n    readonly requestId: string;\n    readonly group: string | null;\n    readonly apiKey: string | null;\n    readonly endpoint: string | null;\n    readonly inputTokens: number;\n    readonly outputTokens: number;\n    readonly cacheReadTokens: number;\n    readonly cacheWriteTokens: number;\n    readonly inputCost: number;\n    readonly outputCost: number;\n    readonly cacheReadCost: number;\n    readonly cacheWriteCost: number;\n    readonly totalCost: number;\n    readonly actualCost: number;\n    readonly multiplier: number;\n    readonly durationMs: number | null;\n    readonly firstTokenMs: number | null;\n    readonly stream: boolean;\n    readonly billingType: number;\n    readonly imageCount: number;\n}',
+    declaration: 'export interface UsageRecord {\n    readonly id: Sub2apiUsageId;\n    readonly createdAt: string;\n    readonly model: string;\n    readonly requestId: string;\n    readonly group: string | null;\n    readonly apiKey: string | null;\n    readonly endpoint: string | null;\n    readonly inputTokens: number;\n    readonly outputTokens: number;\n    readonly cacheReadTokens: number;\n    readonly cacheWriteTokens: number;\n    readonly inputCost: number;\n    readonly outputCost: number;\n    readonly cacheReadCost: number;\n    readonly cacheWriteCost: number;\n    readonly totalCost: number;\n    readonly actualCost: number;\n    readonly multiplier: number;\n    readonly durationMs: number | null;\n    readonly firstTokenMs: number | null;\n    readonly stream: boolean;\n    readonly requestType?: string;\n    readonly reasoningEffort?: string;\n    readonly cacheWrite5mTokens?: number;\n    readonly cacheWrite1hTokens?: number;\n    readonly billingType: number;\n    readonly imageCount: number;\n}',
   },
   {
     name: 'UsageResult',

@@ -94,6 +94,22 @@ async function fixture(handle: (socket: WebSocket, body: Frame) => void = (socke
   return { ...ws, server, transport, posts, call }
 }
 
+it('reconnects an opted-in quota rejection with full history and keeps WebSocket active', async () => {
+  const first = { role: 'user', content: 'hello' }
+  const f = await fixture((socket, frame) => {
+    if (frame.previous_response_id) socket.close(1013, 'wss_account_quota_reconnect')
+    else complete(socket, 'resp_one')
+  }, { responsesIncrementalHistory: true })
+  await (await f.call({ input: [first] })).text()
+  const input = [first, responseItem('resp_one'), { role: 'user', content: 'continue' }]
+  expect(await (await f.call({ input })).text()).toContain('response.completed')
+  expect(f.requests.map(request => request.headers['x-wss-transport-reconnect'])).toEqual(['1', '1'])
+  expect(f.frames[1]).toMatchObject({ previous_response_id: 'resp_one', input: [input[2]] })
+  expect(f.frames[2]).toMatchObject({ input })
+  expect(f.frames[2]).not.toHaveProperty('previous_response_id')
+  expect(f.posts).toEqual([])
+})
+
 it('reuses the connection and sends complete history by default even after a matching completed response', async () => {
   const f = await fixture((socket, body) => {
     if (body.previous_response_id !== undefined) socket.close(1011, 'upstream websocket proxy failed')

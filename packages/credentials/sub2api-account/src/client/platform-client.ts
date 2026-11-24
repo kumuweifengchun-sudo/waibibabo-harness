@@ -3,7 +3,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { randomUUID } from '@deepseek-ai/dsh-util-crypto'
 import type { FileActions } from '@deepseek-ai/dsh-client-ui-file-actions/client'
 import type {} from '@deepseek-ai/dsh-sub2api-account/remote'
-import type { InvoiceRequestKey, PaymentOrder, PlatformResult } from '../platform-types.ts'
+import type { InvoiceRequestKey, PaymentOrder, PlatformResult, RechargeBatch, RechargeBatchAction } from '../platform-types.ts'
 import type { AccountInjected } from './AccountSection.tsx'
 import { initialPlatformState, newInvoiceDraft, type PlatformChannel, type PlatformInjected, type PlatformState } from './platform-state.ts'
 import { readImageReference } from './image-reference.ts'
@@ -13,6 +13,7 @@ type Outcome<T> = { readonly ok: true; readonly value: PlatformResult<T> } | { r
 /** Generated operations needed by the native pages; account login remains owned by its original controller. */
 export type PlatformRemote = Pick<Context['remote']['sub2apiAccount'], 'getGateways' | 'setGateway' | 'generateImages' | 'getImageModels'
   | 'getCheckout' | 'getSubscriptions' | 'getOrders' | 'createOrder' | 'getOrder' | 'cancelOrder'
+  | 'quoteRechargeBatch' | 'getRechargeBatches' | 'updateRechargeBatch'
   | 'getInvoices' | 'getInvoice' | 'quoteInvoice' | 'saveInvoice' | 'getInvoiceFile'>
 
 /** Bind account-scoped native operations without exposing the Remote or credentials to components.
@@ -21,7 +22,7 @@ export type PlatformRemote = Pick<Context['remote']['sub2apiAccount'], 'getGatew
  * @param files - Shared native/browser download service with owned cleanup.
  * @returns page injection plus account-reset and teardown controls.
  */
-export function createPlatformClient(remote: PlatformRemote, account: AccountInjected, files: Pick<FileActions, 'save'>): {
+export function createPlatformClient(remote: PlatformRemote, account: AccountInjected, files: Pick<FileActions, 'save' | 'generatedImages'>): {
   readonly injected: PlatformInjected
   reset: () => void
   dispose: () => void
@@ -29,6 +30,7 @@ export function createPlatformClient(remote: PlatformRemote, account: AccountInj
   let state = initialPlatformState()
   let revision = 0
   let disposed = false
+  let rechargeKey: string | undefined
   const listeners = new Set<() => void>()
   const flights = new Map<PlatformChannel, AbortController>()
   const publish = (patch: Partial<PlatformState>) => {
@@ -40,6 +42,7 @@ export function createPlatformClient(remote: PlatformRemote, account: AccountInj
     revision++
     for (const controller of flights.values()) controller.abort()
     flights.clear()
+    rechargeKey = undefined
     publish(initialPlatformState())
   }
   const run = async <T>(channel: PlatformChannel, request: (signal: AbortSignal) => Promise<Outcome<T>>,
@@ -89,8 +92,21 @@ export function createPlatformClient(remote: PlatformRemote, account: AccountInj
       }
     }, cancelling)
     if (settled && reloadBilling && version === revision) await injected.loadBilling()
+    return settled && version === revision
   }
+  const applyBatch = async (batch: RechargeBatch) => {
+    const previous = state.rechargeBatches.find(item => item.id === batch.id)
+    const batches = previous === undefined ? [batch, ...state.rechargeBatches]
+      : state.rechargeBatches.map(item => item.id === batch.id ? batch : item)
+    publish({ rechargeOffer: null, rechargeBatch: batch, rechargeBatches: batches })
+    if (batch.creditedCents !== (previous?.creditedCents ?? 0) || batch.awardedBonusCents !== (previous?.awardedBonusCents ?? 0)) {
+      await account.refresh()
+    }
+  }
+  const updateBatch = (action: RechargeBatchAction) =>
+    run('billing', () => remote.updateRechargeBatch(action), applyBatch, action.kind !== 'refresh')
   const injected: PlatformInjected = {
+    ...files.generatedImages === undefined ? {} : { generatedImageDownloads: files.generatedImages },
     hooks: { account: account.hooks.account, platform: { getSnapshot: () => state, subscribe: (listener) => {
       listeners.add(listener); return () => { listeners.delete(listener) }
     } } },
@@ -147,7 +163,9 @@ export function createPlatformClient(remote: PlatformRemote, account: AccountInj
       publish({ imageSaves: { ...state.imageSaves, [id]: { status: 'saving' } } })
       try {
         const extension = image.source.startsWith('data:image/jpeg') ? 'jpg' : image.source.startsWith('data:image/webp') ? 'webp' : 'png'
-        const result = await files.save({ url: image.source, name: `waibibabo-${id}.${extension}` }, 'download')
+        const source = { url: image.source, name: `waibibabo-${id}.${extension}` }
+        const result = files.generatedImages === undefined ? await files.save(source, 'download')
+          : await files.save(source, 'download', 'generatedImages')
         if (current()) publish({ imageSaves: { ...state.imageSaves, [id]: result } })
       } catch {
         if (current()) publish({ imageSaves: { ...state.imageSaves, [id]: { status: 'failed' } } })
@@ -196,7 +214,12 @@ export function createPlatformClient(remote: PlatformRemote, account: AccountInj
         errors: { ...state.errors, billing: null } })
     },
     closePayment: () => { publish({ paymentDialog: null }) },
-    refreshPayment: id => updatePayment(() => remote.getOrder(id, !state.pendingCancellationChecks.includes(id)), false),
+    refreshPayment: async (id) => { await updatePayment(() => remote.getOrder(id, !state.pendingCancellationChecks.includes(id)), false) },
+    checkAlipayPayment: async (id, batch) => {
+      if (await updatePayment(() => remote.getOrder(id, true, true), false) && batch !== undefined) {
+        await updateBatch({ kind: 'refresh', id: batch })
+      }
+    },
     cancelPayment: async (id) => {
       if (state.pendingCancellationChecks.includes(id)) return
       await updatePayment(async (signal) => {
@@ -207,6 +230,33 @@ export function createPlatformClient(remote: PlatformRemote, account: AccountInj
         signal.throwIfAborted()
         return remote.getOrder(id, false)
       }, true)
+    },
+    quoteRecharge: async (amountCents, channel) => {
+      if (rechargeKey !== undefined) return
+      await run('billing', () => remote.quoteRechargeBatch(amountCents, channel), (rechargeOffer) => {
+        publish({ rechargeOffer, rechargeBatch: null })
+      })
+    },
+    loadRechargeBatches: async (before) => {
+      await run('billing', signal => remote.getRechargeBatches(before, signal), (batches) => {
+        publish({ rechargeBatches: batches })
+      })
+    },
+    confirmRecharge: async () => {
+      const offer = state.rechargeOffer
+      if (offer === null || flights.has('billing')) return
+      rechargeKey ??= randomUUID()
+      const version = revision
+      const success = await updateBatch({ kind: 'confirm', amountCents: offer.amountCents, channelId: offer.channelId,
+        token: offer.token, key: rechargeKey })
+      if (version !== revision) return
+      if (success || state.errors.billing !== 'uncertain') rechargeKey = undefined
+      if (state.errors.billing === 'conflict') publish({ rechargeOffer: null })
+    },
+    updateRecharge: async (action) => { await updateBatch(action) },
+    closeRecharge: () => {
+      if (!state.loading.billing && rechargeKey === undefined) publish({ rechargeOffer: null, rechargeBatch: null,
+        errors: { ...state.errors, billing: null } })
     },
     loadInvoices: async (query = state.invoiceQuery) => {
       await run('invoices', signal => remote.getInvoices(query, signal), (invoices) => { publish({ invoices, invoiceQuery: query }) })

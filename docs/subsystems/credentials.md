@@ -516,15 +516,36 @@ Owns account credentials, browser attempts and the model routes they authorize.
 /** Refresh one order and optionally ask its provider to verify payment.
  * @param id - Owned order identifier.
  * @param verify - Query the payment provider through the platform.
+ * @param ledger - Explicitly request Alipay reconciliation for an owned Alipay order.
  * @returns authoritative order state; a browser return alone never marks payment successful.
  */
-@Remote getOrder(id: PaymentOrderId, verify: boolean): Promise<PlatformResult<PaymentOrder>>
+@Remote getOrder(id: PaymentOrderId, verify: boolean, ledger?: boolean): Promise<PlatformResult<PaymentOrder>>
 
 /** Cancel an owned pending payment order through the platform's existing rules.
  * @param id - Owned order identifier.
  * @returns acknowledgement only after the platform confirms cancellation.
  */
 @Remote cancelOrder(id: PaymentOrderId): Promise<PlatformResult<null>>
+
+/** Price a split recharge before creating a batch.
+ * @param amountCents - Requested balance recharge in minor currency units.
+ * @param channel - Selected Alipay channel.
+ * @returns a server quote with no order created.
+ */
+@Remote quoteRechargeBatch(amountCents: number, channel: PaymentChannelId): Promise<PlatformResult<RechargeOffer>>
+
+/** Read the current account's recent recharge batches.
+ * @param before - Optional exclusive cursor.
+ * @param signal - Client cancellation.
+ * @returns the most recent owned batches before the cursor.
+ */
+@Remote getRechargeBatches(before?: RechargeBatchId, signal?: AbortSignal): Promise<PlatformResult<readonly RechargeBatch[]>>
+
+/** Read or update an owned recharge batch.
+ * @param action - Explicit operation for an owned recharge batch.
+ * @returns current progress. Confirmation retries reuse the same request key.
+ */
+@Remote updateRechargeBatch(action: RechargeBatchAction): Promise<PlatformResult<RechargeBatch>>
 
 /** List user-owned invoice applications.
  * @param query - Pagination and status.

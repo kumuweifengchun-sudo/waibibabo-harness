@@ -8,7 +8,7 @@ import { PlatformLogin, PlatformNotice, PlatformPagination, PlatformPanel, type 
 import css from './Platform.module.css'
 
 const statuses: Readonly<Record<string, AccountKey>> = { PENDING: 'statusPending', PAID: 'statusPaid', RECHARGING: 'statusRecharging',
-  COMPLETED: 'statusCompleted', EXPIRED: 'statusExpired', CANCELLED: 'statusCancelled', FAILED: 'statusFailed', REFUND_REQUESTED: 'statusRefundRequested',
+  COMPLETED: 'statusCompleted', EXPIRED: 'statusExpired', PAID_EXPIRED: 'statusPaidExpired', CANCELLED: 'statusCancelled', FAILED: 'statusFailed', REFUND_REQUESTED: 'statusRefundRequested',
   REFUNDING: 'statusRefunding', REFUND_PENDING: 'statusRefundPending', PARTIALLY_REFUNDED: 'statusPartiallyRefunded', REFUNDED: 'statusRefunded', REFUND_FAILED: 'statusRefundFailed',
   active: 'statusActive', expired: 'statusExpired', cancelled: 'statusCancelled', inactive: 'statusInactive' }
 const money = (value: number, currency = '') => `${value.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} ${currency}`.trim()
@@ -18,7 +18,7 @@ function statusLabel(value: string, t: PlatformProps['t']) {
   const key = statuses[value]
   return key === undefined ? value : t(key)
 }
-function rechargeWithinLimits(amount: number, method: PaymentMethod, checkout: CheckoutView) {
+function rechargePayAmount(amount: number, method: PaymentMethod, checkout: CheckoutView) {
   const currency = method.currency || 'CNY'
   const digits = /^[A-Z]{3}$/u.test(currency)
     ? new Intl.NumberFormat('zh-CN', { style: 'currency', currency }).resolvedOptions().maximumFractionDigits ?? 2 : 2
@@ -31,8 +31,7 @@ function rechargeWithinLimits(amount: number, method: PaymentMethod, checkout: C
       if (discounted > 0) base = discounted
     }
   }
-  const limited = method.channelId ? (Math.round(base * scale) + Math.ceil(base * method.feeRate * scale / 100)) / scale : base
-  return limited >= method.minimum && (method.maximum === 0 || limited <= method.maximum)
+  return method.channelId ? (Math.round(base * scale) + Math.ceil(base * method.feeRate * scale / 100)) / scale : base
 }
 const validityKey = (unit: string): AccountKey => {
   const normalized = unit.trim().toLowerCase().replace(/s$/u, '')
@@ -54,7 +53,7 @@ function BillingHelp({ label, closeLabel, children }: { label: string; closeLabe
   </>
 }
 
-function OrderPaymentDialog({ order, launch, awaitingCheck, busy, error, t, onClose, onCheck, onCancel }: Pick<PlatformProps, 't'> & {
+function OrderPaymentDialog({ order, launch, awaitingCheck, busy, error, t, onClose, onCheck, onLedger, onCancel }: Pick<PlatformProps, 't'> & {
   order: PaymentOrder | PaymentLaunch
   launch: PaymentLaunch | null
   awaitingCheck: boolean
@@ -62,6 +61,7 @@ function OrderPaymentDialog({ order, launch, awaitingCheck, busy, error, t, onCl
   error: AccountFailure | null
   onClose: () => void
   onCheck: () => void
+  onLedger?: () => void
   onCancel: () => void
 }) {
   const [now, setNow] = useState(Date.now)
@@ -78,6 +78,7 @@ function OrderPaymentDialog({ order, launch, awaitingCheck, busy, error, t, onCl
     className={css.paymentDialog ?? ''} contentClassName={css.scrollContent ?? ''} footer={<div className={css.paymentActions}>
       <Button variant="primary" disabled={busy} onClick={onCheck}>
         {t(busy ? 'accountProcessing' : payable ? 'billingCheckPayment' : 'billingCheck')}</Button>
+      {onLedger && <Button variant="outline" disabled={busy || awaitingCheck} onClick={onLedger}>{t('billingLedgerCheck')}</Button>}
       {pending && (launch === null || payable) && <Button variant="outline" disabled={busy} onClick={onCancel}>{t('billingCancel')}</Button>}
     </div>}>
     <div className={css.section} aria-busy={busy}>
@@ -91,6 +92,7 @@ function OrderPaymentDialog({ order, launch, awaitingCheck, busy, error, t, onCl
       {payable && launch.paymentUrl && <a className={css.paymentLink} href={launch.paymentUrl} target="_blank" rel="noopener noreferrer">{t('billingOpenPayment')}</a>}
       {payable && !launch.qrCode && !launch.paymentUrl && <p className={css.error} role="alert">{t('billingPaymentMissing')}</p>}
       {launch && pending && deadline <= now && <p className={css.muted}>{t('billingPaymentExpired')}</p>}
+      {status === 'PAID_EXPIRED' && <p role="status">{t('billingPaidExpiredDetail')}</p>}
       <PlatformNotice t={t} loading={false} error={error} />
     </div>
   </Modal>
@@ -105,7 +107,7 @@ export function BillingSection(props: PlatformProps) {
 function BillingContent(props: PlatformProps) {
   const state = props.usePlatform(value => value)
   const platformOrigin = props.useAccount(value => value.view?.platformOrigin)
-  const { t, loadBilling } = props
+  const { t, loadBilling, loadRechargeBatches } = props
   const [methodId, setMethod] = useState('')
   const [amount, setAmount] = useState('')
   const [noticeTarget, setNoticeTarget] = useState<'page' | 'dialog' | 'balance' | SubscriptionPlanId>(
@@ -127,11 +129,21 @@ function BillingContent(props: PlatformProps) {
   const channel = method?.channelId ? { channelId: method.channelId } : {}
   const recharge = Number(amount)
   const validAmount = Number.isFinite(recharge) && recharge > 0 && /^\d+(?:\.\d{1,2})?$/u.test(amount)
-  const fits = checkout !== null && method !== undefined && rechargeWithinLimits(recharge, method, checkout)
+  const pay = checkout && method ? rechargePayAmount(recharge, method, checkout) : 0
+  const exceedsGlobal = !!checkout?.rechargeMaximum && recharge > checkout.rechargeMaximum
+  const aboveMinimum = recharge >= (checkout?.rechargeMinimum ?? 0)
+  const fits = !!method && aboveMinimum && !exceedsGlobal && pay >= method.minimum && (method.maximum === 0 || pay <= method.maximum)
+  const splitChannel = method?.splitRecharge && aboveMinimum && (exceedsGlobal || (method.maximum > 0 && pay > method.maximum))
+    ? method.channelId : undefined
   const busy = state.loading.billing
   const blocked = busy || state.orderUncertain || method === undefined || checkout?.enabled !== true
   const launch = state.paymentDialog === 'current' ? state.payment : null
   const order = state.paymentDialog === 'current' ? state.paymentState ?? launch : state.paymentDialog
+  const orderMethod = order?.method
+  const batchSupported = checkout?.desktopPaymentExtensions === true
+  const canCheckLedger = batchSupported && order !== null && (orderMethod === 'alipay' || orderMethod === 'alipay_direct')
+    && (!('status' in order) || ['PENDING', 'EXPIRED', 'CANCELLED'].includes(order.status))
+  useEffect(() => { if (batchSupported) void loadRechargeBatches() }, [batchSupported, loadRechargeBatches])
   const feedback = (form: 'balance' | SubscriptionPlanId) => noticeTarget === form && state.paymentDialog === null && <>
     <PlatformNotice t={t} loading={false} error={state.errors.billing} />
     {state.orderUncertain && <p className={css.error}>{t('billingUnknown')}</p>}
@@ -164,16 +176,22 @@ function BillingContent(props: PlatformProps) {
       {checkout.enabled && !checkout.balanceDisabled && <PlatformPanel title={t('billingRecharge')}>
         <form className={css.form} aria-label={t('billingRecharge')} onSubmit={(event) => {
           event.preventDefault()
-          if (!blocked && validAmount && fits) void create({ amount: recharge, method: method.id, ...channel, kind: 'balance', planId: null })
+          if (blocked || !validAmount) return
+          if (splitChannel !== undefined) {
+            setNoticeTarget('balance')
+            void props.quoteRecharge(Math.round(recharge * 100), splitChannel)
+          } else if (fits) void create({ amount: recharge, method: method.id, ...channel, kind: 'balance', planId: null })
         }}>
           <div className={css.purchaseRow}>
             <label>{t('billingAmount')}{method?.currency && `（${method.currency}）`}<Input type="number" inputMode="decimal" min="0.01" step="0.01"
               value={amount} onChange={(event) => { setAmount(event.target.value) }} required disabled={busy || !method} /></label>
-            <Button type="submit" variant="primary" aria-haspopup="dialog" disabled={blocked || !validAmount || !fits}>
-              {t(busy && noticeTarget === 'balance' ? 'billingCreating' : 'billingCreateRecharge')}</Button>
+            <Button type="submit" variant="primary" aria-haspopup="dialog" disabled={blocked || !validAmount || (!fits && splitChannel === undefined)}>
+              {t(busy && noticeTarget === 'balance' ? 'billingCreating' : splitChannel !== undefined ? 'rechargePreview' : 'billingCreateRecharge')}</Button>
           </div>
-          {method && validAmount && !fits && <p role="alert">{t('billingMethodLimits', {
-            min: money(method.minimum, method.currency), max: method.maximum ? money(method.maximum, method.currency) : t('billingUnlimited'),
+          {method && validAmount && !fits && splitChannel === undefined && <p role="alert">{t('billingMethodLimits', {
+            min: money(!aboveMinimum ? checkout.rechargeMinimum ?? method.minimum : method.minimum, method.currency),
+            max: exceedsGlobal && checkout.rechargeMaximum ? money(checkout.rechargeMaximum, method.currency)
+              : method.maximum ? money(method.maximum, method.currency) : t('billingUnlimited'),
           })}</p>}
           {feedback('balance')}
         </form>
@@ -221,10 +239,90 @@ function BillingContent(props: PlatformProps) {
         total={state.orders.total} busy={busy} t={t}
         onPage={(page) => { setNoticeTarget('page'); void loadBilling({ ...state.orderQuery, page }) }} />}
     </PlatformPanel>
+    {batchSupported && <RechargeBatches {...props} />}
     {order && <OrderPaymentDialog key={order.id} order={order} launch={launch} t={t}
       awaitingCheck={state.pendingCancellationChecks.includes(order.id)} busy={busy}
       error={noticeTarget === 'dialog' ? state.errors.billing : null} onClose={props.closePayment}
       onCheck={() => { setNoticeTarget('dialog'); void props.refreshPayment(order.id) }}
+      {...canCheckLedger ? { onLedger: () => { setNoticeTarget('dialog'); void props.checkAlipayPayment(order.id) } } : {}}
       onCancel={() => { setNoticeTarget('dialog'); void props.cancelPayment(order.id) }} />}
   </section>
+}
+
+function RechargeBatches(props: PlatformProps) {
+  const { t, usePlatform, loadRechargeBatches, updateRecharge, confirmRecharge, closeRecharge, checkAlipayPayment } = props
+  const { rechargeOffer: offer, rechargeBatch: batch, rechargeBatches: batches, loading, errors } = usePlatform(value => value)
+  const busy = loading.billing
+  const [confirmCancel, setConfirmCancel] = useState(false)
+  const [now, setNow] = useState(Date.now)
+  const quote = offer ?? batch
+  const payment = batch?.payment
+  const pendingOrder = batch?.payments.find(item => item.part === batch.nextPart && item.status === 'PENDING')
+  const deadline = payment == null ? 0 : Date.parse(payment.expiresAt)
+  const showPayment = payment != null && deadline > now
+  useEffect(() => {
+    if (deadline <= now) return
+    const timer = setTimeout(() => { setNow(Date.now()) }, Math.min(2_147_483_647, Math.max(0, deadline - Date.now())))
+    return () => { clearTimeout(timer) }
+  }, [deadline, now])
+  const last = batches.at(-1)
+  const currency = (cents: number) => money(cents / 100, 'CNY')
+  return <PlatformPanel title={t('rechargeBatches')} actions={<div className={css.actions}>
+    <Button variant="outline" size="sm" disabled={busy} onClick={() => { void loadRechargeBatches() }}>{t('billingRefresh')}</Button>
+    {batches.length === 20 && last && <Button variant="outline" size="sm" disabled={busy}
+      onClick={() => { void loadRechargeBatches(last.id) }}>{t('rechargeOlder')}</Button>}
+  </div>}>
+    {quote === null && <PlatformNotice t={t} loading={false} error={errors.billing} />}
+    {batches.length === 0 ? <p className={css.muted}>{t('billingEmpty')}</p> : <div className={css.table}>
+      <table aria-label={t('rechargeBatches')}><thead><tr><th>{t('billingMethod')}</th><th>{t('billingPayAmount')}</th>
+        <th>{t('billingStatus')}</th><th>{t('usageDetails')}</th></tr></thead>
+      <tbody>{batches.map(item => <tr key={item.id}>
+        <td>{item.channelName}</td><td>{currency(item.paidCents)} / {currency(item.payCents)}</td>
+        <td>{item.status === 'OPEN' ? t('rechargeOpen') : statusLabel(item.status, t)}</td>
+        <td><Button variant="ghost" disabled={busy} aria-haspopup="dialog" onClick={() => {
+          setConfirmCancel(false)
+          void updateRecharge({ kind: 'refresh', id: item.id })
+        }}>{t('usageDetails')}</Button></td></tr>)}</tbody>
+      </table>
+    </div>}
+    {quote !== null && <Modal open title={t(offer ? 'rechargePreview' : 'rechargeBatches')} closeLabel={t('close')}
+      onClose={closeRecharge} className={css.paymentDialog ?? ''} contentClassName={css.scrollContent ?? ''}
+      footer={<div className={css.paymentActions}>
+        {offer && <Button variant="primary" disabled={busy} onClick={() => { void confirmRecharge() }}>{t('rechargeConfirm')}</Button>}
+        {batch && <>
+          {batch.canContinue && batch.nextPart !== null && <Button variant="primary" disabled={busy} onClick={() => {
+            if (batch.nextPart !== null) void updateRecharge({ kind: 'continue', id: batch.id, part: batch.nextPart })
+          }}>{t('rechargePayPart', { part: batch.nextPart })}</Button>}
+          <Button variant="outline" disabled={busy} onClick={() => { void updateRecharge({ kind: 'refresh', id: batch.id }) }}>{t('billingRefresh')}</Button>
+          {pendingOrder && <Button variant="outline" disabled={busy} onClick={() => {
+            void checkAlipayPayment(pendingOrder.orderId, batch.id)
+          }}>{t('billingLedgerCheck')}</Button>}
+          {batch.status === 'OPEN' && <Button variant="outline" disabled={busy} onClick={() => {
+            if (confirmCancel) { setConfirmCancel(false); void updateRecharge({ kind: 'cancel', id: batch.id }) }
+            else setConfirmCancel(true)
+          }}>{t(confirmCancel ? 'rechargeConfirmCancel' : 'rechargeCancel')}</Button>}
+        </>}
+      </div>}>
+      <div className={css.section} aria-busy={busy}>
+        <dl className={css.paymentDetails}>
+          <dt>{t('billingMethod')}</dt><dd>{quote.channelName}</dd>
+          <dt>{t('billingPayAmount')}</dt><dd>{currency(quote.payCents)}</dd>
+          <dt>{t('rechargeCredit')}</dt><dd>{currency(batch?.creditedCents ?? quote.creditCents)}</dd>
+          <dt>{t('rechargeBonus')}</dt><dd>{currency(batch?.awardedBonusCents ?? quote.bonusCents)}</dd>
+          {batch && <><dt>{t('rechargePaid')}</dt><dd>{currency(batch.paidCents)}</dd>
+            <dt>{t('billingStatus')}</dt><dd>{batch.status === 'OPEN' ? t('rechargeOpen') : statusLabel(batch.status, t)}</dd>
+            <dt>{t('billingExpires')}</dt><dd>{date(batch.expiresAt)}</dd></>}
+        </dl>
+        <ol>{quote.parts.map((part, index) => {
+          const record = batch?.payments.find(item => item.part === index + 1)
+          return <li key={index}>{currency(part.payCents)}{record && ` · ${statusLabel(record.status, t)}`}</li>
+        })}</ol>
+        {showPayment && payment.qrCode && <img className={css.qrcode} src={payment.qrCode} alt={t('billingScan')} />}
+        {showPayment && payment.paymentUrl && <a className={css.paymentLink} href={payment.paymentUrl} target="_blank" rel="noopener noreferrer">{t('billingOpenPayment')}</a>}
+        {batch?.codeUncertain && <p role="status">{t('rechargeCodeUncertain')}</p>}
+        {confirmCancel && <p role="status">{t('rechargeCancelNotice')}</p>}
+        <PlatformNotice t={t} loading={busy} error={errors.billing} />
+      </div>
+    </Modal>}
+  </PlatformPanel>
 }

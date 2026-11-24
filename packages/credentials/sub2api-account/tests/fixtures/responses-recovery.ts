@@ -37,7 +37,9 @@ export function apply(ctx: Context): void {
           const bytes = Buffer.isBuffer(data) ? data : Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data)
           const body = JSON.parse(bytes.toString('utf8')) as Record<string, unknown>
           frames.push(body)
-          if (body.previous_response_id !== undefined || frames.length === 3) {
+          if (frames.length === 2) {
+            socket.close(1013, 'wss_account_quota_reconnect')
+          } else if (body.previous_response_id !== undefined || frames.length === 4) {
             socket.close(1011, 'upstream websocket proxy failed')
           } else socket.send(terminal)
         } catch (error) { failures.push(error); socket.terminate() }
@@ -72,7 +74,8 @@ export function apply(ctx: Context): void {
       input.push({ role: 'user', content: 'second' })
       assert.match(await (await call()).text(), /response.completed/u)
       assert.deepEqual(frames[1]?.input, input)
-      assert.equal(frames[1]?.previous_response_id, undefined)
+      assert.deepEqual(frames[2]?.input, input)
+      assert.equal(frames[2]?.previous_response_id, undefined)
       input.push({ role: 'user', content: 'interrupted' })
       await assert.rejects((await call()).text(), (error: unknown) => error instanceof LlmError && error.code === 'TRANSPORT')
       assert.equal(reported.length, 1)
@@ -80,7 +83,7 @@ export function apply(ctx: Context): void {
       assert.equal(posts.length, 1)
       input.push({ role: 'user', content: 'continue' })
       assert.match(await (await call()).text(), /response.completed/u)
-      assert.equal(frames.length, 3)
+      assert.equal(frames.length, 4)
       assert.deepEqual(posts, [firstBody, { model: 'fixture', stream: true, store: false, input }])
       assert.deepEqual(failures, [])
     } finally {

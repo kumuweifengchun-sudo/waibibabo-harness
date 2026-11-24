@@ -31,6 +31,7 @@ export async function accountFixture(options: {
   webSocket?: boolean
   agentLoop?: boolean
   models?: string[]
+  modelMetadata?: Readonly<Record<string, { context_window?: number; max_output_tokens?: number; supported_endpoints?: string[] }>>
   groups?: Array<{ id: number; name: string; platform: string }>
   platform?: string
   feature?: (request: IncomingMessage, response: ServerResponse, body: Buffer) => boolean | Promise<boolean> } = {}) {
@@ -146,7 +147,7 @@ export async function accountFixture(options: {
     }
     if (path === '/api/v1/desktop/key') {  response(res, { id: 19, group_id: body.group_id, key: 'short-inference-key', expires_at: new Date(Date.now() + 600000).toISOString() }); return }
     if (path === '/v1/models') {
-      response(res, { data: (options.models ?? ['relay-model']).map(id => ({ id, context_window: 32768, max_output_tokens: 4096 })) }, false)
+      response(res, { data: (options.models ?? ['relay-model']).map(id => ({ id, ...options.modelMetadata?.[id] })) }, false)
       return
     }
     const event = (data: object) => { res.write(`data: ${JSON.stringify(data)}\n\n`) }

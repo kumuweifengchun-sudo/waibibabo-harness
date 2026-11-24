@@ -55,6 +55,19 @@ it('updates budgets for the same session while preserving an already prepared ca
     .toEqual([32768, 65536, 32768])
 })
 
+it('uses long-context catalog limits with a manual model override available', async () => {
+  const model = 'claude-sonnet-4-6[1m]'
+  const f = await accountFixture({ models: [model], protocol: 'auto', platform: 'anthropic',
+    modelMetadata: { [model]: { context_window: 1_000_000, max_output_tokens: 64_000, supported_endpoints: ['/v1/messages'] } } })
+  const view = await f.account.signInWithPassword('user@example.com', 'password')
+  expect(view.modelProtocols).toMatchObject([{ model, effective: 'anthropic-messages' }])
+  const info = () => f.context.llm.resolveModelInfo('sub2api-u7-g3', model)
+  expect(await info()).toMatchObject({ context: { contextWindow: 1_000_000 }, defaultMaxTokens: 64_000 })
+  await f.account.setModelLimitOverride('3' as Sub2apiGroupId, model,
+    { contextWindow: 200_000, maxInputTokens: 180_000, maxOutputTokens: 20_000 })
+  expect(await info()).toMatchObject({ context: { contextWindow: 200_000 }, defaultMaxTokens: 20_000 })
+})
+
 it('inherits global budgets while preserving and resetting each model override after reload', async () => {
   const f = await accountFixture({ models: ['gpt-5.1', 'claude-sonnet-4-6'], protocol: 'auto' })
   await f.account.signInWithPassword('user@example.com', 'password')

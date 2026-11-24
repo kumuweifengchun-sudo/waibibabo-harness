@@ -183,7 +183,8 @@ export class PlatformClient {
       throw networkFailure(error, signal)
     }
     const capabilities = ['gateways', 'usage/records', 'usage/stats', 'payment/config', 'payment/checkout-info',
-      'payment/orders', 'payment/orders/my', 'payment/orders/verify', 'invoices', 'invoices/quote']
+      'payment/orders', 'payment/orders/my', 'payment/orders/verify', 'payment/orders/verify-alipay-ledger',
+      'payment/recharge-batches', 'payment/recharge-batches/quote', 'invoices', 'invoices/quote']
     const missingFeature = response.status === 404 && capabilities.some(path => url.pathname === `/api/v1/desktop/${path}`)
     if (response.status === 401 || missingFeature) {
       await response.body?.cancel()
@@ -210,6 +211,10 @@ function platformFailure(status: number, data: unknown): AccountError {
   if (code === 'INVALID_RETURN_URL') return new AccountError('payment-return')
   if (code === 'INVALID_AMOUNT' || code === 'PAYMENT_CHANNEL_LIMIT_EXCEEDED') return new AccountError('payment-limit')
   if (code === 'PAYMENT_CHANNEL_UNAVAILABLE' || code === 'INVALID_PAYMENT_CHANNEL') return new AccountError('payment-channel')
+  if (code === 'RECHARGE_SPLIT_CHANNEL') return new AccountError('payment-channel')
+  if (code === 'RECHARGE_SPLIT_UNAVAILABLE') return new AccountError('payment-limit')
+  if (code === 'ALIPAY_LEDGER_UNAVAILABLE' || code === 'ALIPAY_LEDGER_TOO_OLD') return new AccountError('ledger-unavailable')
+  if (code === 'ALIPAY_LEDGER_RATE_LIMITED') return new AccountError('ledger-rate')
   if (code === 'PAYMENT_GATEWAY_ERROR' || code === 'WECHAT_H5_NOT_AUTHORIZED') return new AccountError('payment-gateway')
   if (status >= 500) return new AccountError('server')
   if (/captcha|turnstile/iu.test(code)) return new AccountError('captcha')

@@ -8,6 +8,8 @@ export type GatewayId = Branded<'Sub2apiGatewayId'>
 export type PaymentOrderId = Branded<'Sub2apiPaymentOrderId'>
 /** Platform checkout channel within a payment method. */
 export type PaymentChannelId = Branded<'Sub2apiPaymentChannelId'>
+/** Platform recharge batch identifier. */
+export type RechargeBatchId = Branded<'Sub2apiRechargeBatchId'>
 /** Platform subscription plan identifier. */
 export type SubscriptionPlanId = Branded<'Sub2apiSubscriptionPlanId'>
 /** Platform invoice identifier. */
@@ -58,6 +60,7 @@ export interface GeneratedImage { readonly id: ImageOutputId; readonly source: s
 export interface ImageResult { readonly images: readonly GeneratedImage[] }
 /** Payment method and authoritative limits supplied by the platform. */
 export interface PaymentMethod {
+  readonly splitRecharge?: boolean
   readonly id: string
   readonly channelId?: PaymentChannelId
   readonly name: string
@@ -81,6 +84,9 @@ export interface SubscriptionPlan {
 }
 /** Account checkout configuration without payment secrets. */
 export interface CheckoutView {
+  readonly desktopPaymentExtensions?: boolean
+  readonly rechargeMinimum?: number
+  readonly rechargeMaximum?: number
   readonly enabled: boolean
   readonly balanceDisabled: boolean
   readonly methods: readonly PaymentMethod[]
@@ -102,6 +108,7 @@ export interface OrderRequest {
 }
 /** Created order and the provider's permitted payment destination. */
 export interface PaymentLaunch {
+  readonly method?: string
   readonly id: PaymentOrderId
   readonly amount: number
   readonly payAmount: number
@@ -123,6 +130,39 @@ export interface PaymentOrder {
   readonly createdAt: string
   readonly expiresAt: string
 }
+/** Server-priced recharge in minor currency units. */
+export interface RechargeQuote {
+  readonly amountCents: number
+  readonly payCents: number
+  readonly creditCents: number
+  readonly bonusCents: number
+  readonly completionBonusCents: number
+  readonly channelId: PaymentChannelId
+  readonly channelName: string
+  readonly parts: readonly { readonly payCents: number }[]
+}
+/** Priced selection and confirmation token. */
+export interface RechargeOffer extends RechargeQuote { readonly token: string }
+/** Owned batch and any outstanding payment that can be resumed. */
+export interface RechargeBatch extends RechargeQuote {
+  readonly id: RechargeBatchId
+  readonly status: string
+  readonly expiresAt: string
+  readonly paidCents: number
+  readonly creditedCents: number
+  readonly awardedBonusCents: number
+  readonly nextPart: number | null
+  readonly canContinue: boolean
+  readonly codeUncertain: boolean
+  readonly payment: PaymentLaunch | null
+  readonly payments: readonly { readonly orderId: PaymentOrderId; readonly part: number; readonly status: string }[]
+}
+/** Explicit update of a recharge batch, or a read to reconcile its current progress. */
+export type RechargeBatchAction =
+  | { readonly kind: 'confirm'; readonly amountCents: number; readonly channelId: PaymentChannelId; readonly token: string; readonly key: string }
+  | { readonly kind: 'continue'; readonly id: RechargeBatchId; readonly part: number }
+  | { readonly kind: 'refresh'; readonly id: RechargeBatchId }
+  | { readonly kind: 'cancel'; readonly id: RechargeBatchId }
 /** Paginated account-owned orders. */
 export interface OrderPage {
   readonly items: readonly PaymentOrder[]
