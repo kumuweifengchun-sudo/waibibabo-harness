@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.2-rc.3/python-sdk-pydantic-minimum/guide.md
+/:
+  en: d11536c89e234f9b
+  zh: 32adca073c6b437b
+/python-sdk-requires-pydantic-2-14-or-later:
+  en: 869e24a43f3bea42
+  zh: 535ea5b1e25b5881
+/python-sdk-requires-pydantic-2-14-or-later/change:
+  en: cdbbf6a56b23e597
+  zh: 1fd4566fb471643e
+/python-sdk-requires-pydantic-2-14-or-later/migration:
+  en: e7d402ded34db7cb
+  zh: d849814b93141af4
